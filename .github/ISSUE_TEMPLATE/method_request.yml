@@ -1,0 +1,54 @@
+name: Method or knowledge request
+description: Better coverage for an Ozon API method
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this template to ask for richer support of an Ozon endpoint:
+        a missing example, a wrong subscription tier, a workflow you'd
+        like to see curated.
+
+  - type: input
+    id: endpoint
+    attributes:
+      label: Ozon API endpoint
+      placeholder: e.g. POST /v1/analytics/data
+    validations:
+      required: true
+
+  - type: input
+    id: operation_id
+    attributes:
+      label: operation_id
+      placeholder: e.g. AnalyticsAPI_AnalyticsGetData
+
+  - type: textarea
+    id: use_case
+    attributes:
+      label: Use case
+      description: What business problem does this solve? Helps us
+        prioritise.
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: missing
+    attributes:
+      label: What is missing
+      options:
+        - label: Method not in catalog
+        - label: Missing business_context
+        - label: Missing usage example
+        - label: Wrong subscription tier
+        - label: Missing workflow
+        - label: Missing pagination pattern
+        - label: Wrong / outdated description
+        - label: Missing safety classification
+
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Evidence
+      description: Link to Ozon docs, screenshot, or sample response.
+        Especially useful for subscription-tier disputes.

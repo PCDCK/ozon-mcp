@@ -1,0 +1,260 @@
+# Common Ozon API errors and how to handle them.
+#
+# Format: each entry has a code (HTTP or Ozon error code), title, cause, fix.
+# Operation-specific entries set operation_id; generic ones leave it null.
+
+- code: "400"
+  http_status: 400
+  title: Неверный параметр
+  cause: |
+    Один из параметров запроса не прошёл валидацию: неверный формат даты,
+    отсутствие required-поля, выход за допустимый диапазон (limit > 1000),
+    использование filter.posting_number и filter.date одновременно для
+    финансовых транзакций.
+  fix: |
+    Сверь payload с request_schema из ozon_describe_method. Проверь:
+    даты в UTC формате `YYYY-MM-DDTHH:mm:ssZ`, лимиты в пределах [1, 1000],
+    oneOf-фильтры — только одна ветка.
+
+- code: "401"
+  http_status: 401
+  title: Не авторизован
+  cause: |
+    Отсутствуют или неверны заголовки Client-Id/Api-Key (Seller API) или
+    истёк OAuth2-токен (Performance API).
+  fix: |
+    Для Seller API — проверь env переменные OZON_CLIENT_ID и OZON_API_KEY.
+    Для Performance API — обнови token через POST /api/client/token c
+    client_credentials grant.
+
+- code: "403"
+  http_status: 403
+  title: Доступ запрещён
+  cause: |
+    Несколько возможных причин:
+    1. У кабинета нет прав на метод (Premium-метод без подписки)
+    2. Аккаунт заблокирован Ozon — message: "Company is blocked, please contact support"
+    3. Отключённый раздел в настройках API (ReviewAPI, FBP)
+    4. Метод доступен только для отдельной категории продавцов
+  fix: |
+    Читай message в теле ответа — Ozon всегда объясняет причину.
+    "Company is blocked" — обращайся в поддержку Ozon, ключи тут ни при чём.
+    "not available with existing subscription" — нужна подписка выше.
+    "access denied" на FBP — кабинет не подключён к программе FBP.
+    "PermissionDenied" на ReviewAPI — включи доступ в Личном Кабинете → Отзывы.
+
+- code: "404"
+  http_status: 404
+  title: Не найдено
+  cause: |
+    Запрашиваемая сущность (отправление, товар, кампания) не существует или
+    не принадлежит этому кабинету.
+  fix: |
+    Проверь posting_number / product_id / campaign_id. Помни про мультиарендность
+    — id из чужого кабинета вернёт 404, не 403.
+
+- code: "409"
+  http_status: 409
+  title: Конфликт запроса
+  cause: |
+    Запрос конфликтует с текущим состоянием: попытка отменить уже отгруженный
+    заказ, повторное создание сущности с тем же ключом идемпотентности.
+  fix: |
+    Перечитай актуальное состояние через GET-метод и повтори, если действие
+    всё ещё нужно. Для идемпотентных операций — сохраняй последний успешный
+    response и не повторяй вслепую.
+
+- code: "429"
+  http_status: 429
+  title: Слишком много запросов
+  cause: Превышен rate limit для секции/метода.
+  fix: |
+    Реализуй exponential backoff с jitter. Снижай concurrency. Проверь
+    rate_limits.yaml для оценки лимита нужной секции и не превышай его на
+    клиенте через aiolimiter.
+
+- code: "500"
+  http_status: 500
+  title: Внутренняя ошибка сервера
+  cause: Сбой на стороне Ozon, не связанный с твоим запросом.
+  fix: |
+    Ретрай с exponential backoff (3 попытки достаточно). Если повторяется
+    дольше 5 минут — пиши в техподдержку Ozon, не молоти бесконечно.
+
+- code: "503"
+  http_status: 503
+  title: Сервис недоступен
+  cause: Плановое или аварийное обслуживание Ozon API.
+  fix: |
+    Подожди 1-5 минут и повтори. Не хардкодь интервал — читай Retry-After
+    из заголовков ответа если есть.
+
+# --- Phase 2 audit findings: real Ozon error messages observed live ---
+
+- code: "OBSOLETE_METHOD"
+  http_status: 400
+  title: Метод устарел
+  cause: |
+    Метод помечен Ozon как устаревший и больше не работает. В описании
+    swagger обычно есть фраза "устаревает" / "будет отключён". Возвращает
+    "obsolete method cannot be used".
+  fix: |
+    Используй замену из описания метода (обычно /v2/* версия). В каталоге
+    deprecated методы автоматически помечены полем deprecated=True и
+    deprecation_note содержит подсказку.
+
+- code: "FILTER_REQUIRED"
+  http_status: 400
+  title: Filter обязателен на runtime
+  cause: |
+    Многие *.list методы Seller API требуют непустой filter object, хотя
+    в swagger filter не помечен как required. Ошибка вида "Request validation
+    error: invalid SomeRequest.Filter: value is required".
+  fix: |
+    Всегда передавай filter с хотя бы одним полем. Минимальные комбинации
+    для типичных list-методов есть в examples.yaml.
+
+- code: "PERMISSION_DENIED_FBP"
+  http_status: 403
+  http_status_alt: 403
+  operation_id: null
+  title: Доступ к FBP-методам не выдан
+  cause: |
+    FBP (Fulfillment by Partner) — отдельная программа, доступ выдаётся
+    индивидуально. Без подключения все FBP-методы возвращают 403
+    "access denied".
+  fix: |
+    Проверь включение в FBP-программу через техподдержку Ozon. Если
+    тебе нужны заказы из обычного склада — используй FBO/FBS методы.
+
+- code: "PERMISSION_DENIED_REVIEW"
+  http_status: 403
+  title: API-доступ к отзывам отключён
+  cause: |
+    На некоторых PREMIUM_PLUS аккаунтах ReviewAPI возвращает 403
+    "PermissionDenied: not available with existing subscription". Это
+    означает что доступ гейтится не только тиром подписки, но и
+    отдельным флагом включения в кабинете.
+  fix: |
+    Проверь Личный Кабинет → Отзывы → API доступ. Включение бесплатное
+    но требует ручного клика. После включения 403 уходит сразу.
+
+- code: "TOO_LONG_PERIOD"
+  http_status: 400
+  operation_id: FinanceAPI_FinanceTransactionListV3
+  title: Период больше 1 месяца запрещён
+  cause: |
+    "Request validation error: too long period, only one month allowed".
+    Подтверждено live на 2026-04-12.
+  fix: |
+    Дробите запрос помесячно. Для исторической загрузки используйте
+    iterator по календарным месяцам, а не сплошной диапазон.
+
+- code: "LIMIT_OUT_OF_RANGE"
+  http_status: 400
+  title: limit вне допустимого диапазона
+  cause: |
+    Каждый list-метод Ozon имеет свой диапазон для limit. Сообщение
+    точное: "value must be inside range (0, 1000]" или (0, 100] и т.д.
+  fix: |
+    Прочти точное сообщение Ozon — оно содержит верную верхнюю границу.
+    Для большинства методов max=1000, для ReviewList min=20 max=100,
+    для ReceiptsSellerList max=100.
+
+# --- Ozon-specific numeric error codes (returned in body.code) ---
+
+- code: "0"
+  http_status: 200
+  title: Успех
+  cause: |
+    Запрос обработан без ошибок. Тело ответа содержит данные.
+  fix: |
+    Ничего не делать.
+
+- code: "7"
+  http_status: 403
+  title: Нет доступа к методу — требуется более высокая подписка
+  cause: |
+    Ozon возвращает code=7 в теле ответа когда метод гейтится подпиской,
+    которой нет у кабинета. Обычно пара к message "no access to this
+    method" или "not available with existing subscription".
+  fix: |
+    Проверь подписку через ozon_get_subscription_status. Если кабинет
+    действительно ниже требуемого тира — этот метод недоступен пока
+    подписка не повысится. Используй subscription_overrides.yaml чтобы
+    сразу не делать вызов.
+
+- code: "13"
+  http_status: 401
+  title: Истёк OAuth-токен Performance API
+  cause: |
+    Performance API возвращает code=13 / message "token expired" когда
+    bearer-token старше TTL (~30 мин). PerformanceTokenManager обновляет
+    автоматически, но если ручной токен — он стух.
+  fix: |
+    Получи новый токен через POST /api/client/token grant=client_credentials
+    и пересоздай PerformanceClient.
+
+- code: "16"
+  http_status: 400
+  title: Неверный аргумент (InvalidArgument)
+  cause: |
+    Generic-код для нарушения схемы запроса. message объясняет конкретное
+    поле: "value must be inside range", "value is required", "must be one
+    of [...]".
+  fix: |
+    Прочти message — Ozon точно указывает поле и ограничение. Сверь
+    значение с request_schema из ozon_describe_method.
+
+# --- Performance API auth ---
+
+- code: "PERFORMANCE_AUTH_TOKEN_EXPIRED"
+  http_status: 401
+  api: performance
+  title: Bearer-токен Performance API истёк
+  cause: |
+    OAuth2 client_credentials токен живёт ~30 мин. Performance API после
+    истечения возвращает 401 с message "token has expired" или
+    "Unauthenticated".
+  fix: |
+    PerformanceTokenManager перезапрашивает токен автоматически на 401.
+    Если 401 повторяется — проверь client_id/client_secret в env.
+
+# --- ProductAPI batch validation ---
+
+- code: "PRODUCT_VALIDATION_ERROR"
+  http_status: 400
+  api: seller
+  title: Валидация партии товаров не прошла
+  cause: |
+    /v1/product/import и /v3/product/import возвращают payload с массивом
+    items, в котором у каждой записи есть errors[]. status=200 на верхнем
+    уровне, но конкретные товары не приняты.
+  fix: |
+    Не доверяй HTTP-статусу — итерируй response.items[].errors. Каждая
+    ошибка содержит code (например "INVALID_ATTRIBUTE_VALUE") и поле
+    field — фиксируй именно его.
+
+# --- Ozon-specific business errors ---
+
+- code: "RATE_LIMITED_TURNOVER"
+  http_status: 429
+  operation_id: AnalyticsAPI_StocksTurnover
+  title: 1 req/min лимит на /v1/analytics/turnover/stocks
+  cause: |
+    Подтверждено live (2026-04-17): метод имеет жёсткий лимит 1 запрос
+    в минуту на кабинет. 15 из 40 вызовов в ozon_sync_log получили 429.
+  fix: |
+    Семафор + sleep(60) между вызовами. ozon-mcp v0.5.0 ставит
+    AsyncSemaphore на этот endpoint автоматически.
+
+- code: "ENDPOINT_BLOCKED_FOR_COMPANY"
+  http_status: 403
+  title: Кабинет заблокирован — все запросы возвращают 403
+  cause: |
+    "Company is blocked, please contact support" — Ozon заморозил
+    кабинет (нарушение правил, юр-проблемы и т.п.). Все методы возвращают
+    403 даже с валидными ключами.
+  fix: |
+    Не ретраить. Передать tenant в read-only режим в UI и попросить
+    владельца обратиться в поддержку Ozon.

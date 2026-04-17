@@ -1,0 +1,120 @@
+# Rate limits per Ozon API section.
+#
+# Sources:
+#   - empirical: confirmed via 429 hits in ozon_sync_log (Phase 1, 2026-04-17)
+#   - docs:     value documented in Ozon developer docs / swagger description
+#   - guess:    conservative estimate, not yet verified
+#
+# Per-method overrides win over per-section overrides; per-section overrides
+# win over the per-api global default. See transport/ratelimit.py.
+
+# --------------------------------------------------------------------- Seller
+# Global ceiling, applies if no per-section override exists.
+- api: seller
+  section: null
+  per_minute: 1000
+  note: Default for Seller API. Confirmed via 71 successful read calls across
+        35 sections during Phase 2 audit (2026-04-12) — no 429 below 20 RPS.
+  source: empirical
+
+# Per-section overrides.
+- api: seller
+  section: Финансовые отчёты
+  per_minute: 100
+  note: Finance reports are heavier — Ozon throttles harder. Conservative.
+  source: guess
+
+- api: seller
+  section: Premium-методы
+  per_minute: 60
+  note: Analytics endpoints (stock_on_warehouses, manage/stocks) are gated
+        per-tier. PREMIUM_PLUS sees ~60/min; lower tiers — 10–30/min.
+  source: docs
+
+- api: seller
+  section: Загрузка и обновление товаров
+  per_minute: 1000
+  note: Standard ProductAPI limit. Confirmed at 65 calls/`/v3/product/list`
+        without throttling.
+  source: empirical
+
+- api: seller
+  section: Обработка заказов FBS и rFBS
+  per_minute: 1000
+  source: guess
+
+- api: seller
+  section: Отчёты
+  per_minute: 100
+  note: Async report generation — actual ceiling is on report-creation rate.
+  source: docs
+
+# Per-method overrides — confirmed live.
+- api: seller
+  operation_id: AnalyticsAPI_StocksTurnover
+  per_minute: 1
+  note: |
+    /v1/analytics/turnover/stocks — Ozon enforces 1 req/min hard limit.
+    Confirmed: 15 of 40 calls returned 429 in ozon_sync_log between
+    2026-04-16 20:32 and 2026-04-17 00:35; gaps between failures match
+    the 1-minute window. Use semaphore + 60s pacing.
+  source: empirical
+
+- api: seller
+  operation_id: AnalyticsAPI_AnalyticsGetData
+  per_minute: 60
+  note: PREMIUM_PLUS-tier method, observed p50 ~108ms.
+  source: docs
+
+- api: seller
+  operation_id: FinanceAPI_FinanceTransactionListV3
+  per_minute: 100
+  note: Finance reports section limit — uses page_size up to 1000.
+  source: docs
+
+- api: seller
+  operation_id: ProductAPI_GetProductInfoStocks
+  per_minute: 1000
+  note: Bulk stock fetch, cursor-paginated. No throttling observed.
+  source: empirical
+
+- api: seller
+  operation_id: ProductAPI_GetProductInfoPrices
+  per_minute: 1000
+  note: 30 successful calls in sync_log, no 429.
+  source: empirical
+
+- api: seller
+  operation_id: ProductAPI_GetProductList
+  per_minute: 1000
+  note: 65 successful calls in sync_log, no 429.
+  source: empirical
+
+# ------------------------------------------------------------------ Performance
+- api: performance
+  section: null
+  per_minute: 1000
+  note: Performance API is asynchronous for most stats endpoints. No 429s
+        observed during 2026-04-12 audit on /api/client/* endpoints.
+  source: empirical
+
+- api: performance
+  section: Статистика
+  per_minute: 60
+  note: Stats submission rate-limits because it triggers async report
+        generation server-side.
+  source: docs
+
+# --- Latency notes (measured, not throttling) ---
+#
+# Cold first call always slower (TLS handshake + connection pool warmup):
+#   /v1/seller/info               p50 265ms (cold), 80ms warm
+#   /v3/product/list              p50 80ms warm
+#   /v2/posting/fbo/list          p50 85ms warm
+#   /v3/finance/transaction/list  p50 89ms warm
+#   /v1/analytics/data            p50 108ms warm
+#   /api/client/campaign          p50 125ms (single call returns 270KB+)
+#   /api/client/statistics/list   p50 140ms (small response)
+#
+# First-call slow path: 1300ms+ observed in Доставка section. Subsequent
+# calls on the same client are 60-120ms.

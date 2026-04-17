@@ -1,0 +1,86 @@
+{
+  "items": [
+    {
+      "id": 99000001,
+      "name": "Test product 1",
+      "offer_id": "TEST-SKU-001",
+      "barcode": "9900000001",
+      "barcodes": ["9900000001"],
+      "description_category_id": 17027949,
+      "type_id": 91565,
+      "currency_code": "RUB",
+      "marketing_price": "499.0000",
+      "min_price": "299.0000",
+      "old_price": "599.0000",
+      "price": "399.0000",
+      "vat": "0.20",
+      "visibility_details": {"has_price": true, "has_stock": true, "active_product": true},
+      "images": ["https://example.test/img/99000001.jpg"],
+      "primary_image": "https://example.test/img/99000001.jpg",
+      "color_image": [],
+      "images360": [],
+      "category_id": 17027949,
+      "created_at": "2026-01-15T08:00:00Z",
+      "updated_at": "2026-04-10T12:00:00Z",
+      "statuses": {
+        "status": "price_sent",
+        "status_failed": "",
+        "moderate_status": "approved",
+        "validation_status": "success",
+        "status_name": "Готов к продаже",
+        "status_description": "",
+        "is_created": true,
+        "status_tooltip": "",
+        "status_updated_at": "2026-04-10T12:00:00Z"
+      },
+      "stocks": {
+        "has_stock": true,
+        "stocks": [
+          {"present": 12, "reserved": 1, "type": "fbo"},
+          {"present": 0, "reserved": 0, "type": "fbs"}
+        ]
+      }
+    },
+    {
+      "id": 99000002,
+      "name": "Test product 2",
+      "offer_id": "TEST-SKU-002",
+      "barcode": "9900000002",
+      "barcodes": ["9900000002"],
+      "description_category_id": 17027949,
+      "type_id": 91565,
+      "currency_code": "RUB",
+      "marketing_price": "1499.0000",
+      "min_price": "999.0000",
+      "old_price": "1799.0000",
+      "price": "1299.0000",
+      "vat": "0.20",
+      "visibility_details": {"has_price": true, "has_stock": true, "active_product": true},
+      "images": ["https://example.test/img/99000002.jpg"],
+      "primary_image": "https://example.test/img/99000002.jpg",
+      "color_image": [],
+      "images360": [],
+      "category_id": 17027949,
+      "created_at": "2026-02-01T08:00:00Z",
+      "updated_at": "2026-04-12T09:30:00Z",
+      "statuses": {
+        "status": "price_sent",
+        "status_failed": "",
+        "moderate_status": "approved",
+        "validation_status": "success",
+        "status_name": "Готов к продаже",
+        "status_description": "",
+        "is_created": true,
+        "status_tooltip": "",
+        "status_updated_at": "2026-04-12T09:30:00Z"
+      },
+      "stocks": {
+        "has_stock": true,
+        "stocks": [
+          {"present": 5, "reserved": 0, "type": "fbo"},
+          {"present": 25, "reserved": 2, "type": "fbs"}
+        ]
+      }
+    }
+  ]
+}

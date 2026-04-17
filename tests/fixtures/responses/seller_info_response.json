@@ -1,0 +1,16 @@
+{
+  "name": "Test seller cabinet",
+  "company": {
+    "name": "Test Seller LLC",
+    "type": "OOO"
+  },
+  "subscription": {
+    "type": "PREMIUM_PLUS",
+    "is_premium": true,
+    "valid_until": "2027-04-01T00:00:00Z"
+  },
+  "tariffication": {
+    "fbo_count": 24,
+    "fbs_count": 7
+  }
+}

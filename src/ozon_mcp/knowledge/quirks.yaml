@@ -1,0 +1,1090 @@
+# Method-specific quirks — things that surprise developers integrating Ozon API.
+#
+# Auto-extracted quirks (from method descriptions) get extracted_from: description.
+# Hand-curated ones get extracted_from: curated.
+
+- operation_id: FinanceAPI_FinanceTransactionListV3
+  api: seller
+  title: Период не больше 1 месяца
+  description: |
+    filter.date.from и filter.date.to не могут охватывать больше одного
+    календарного месяца. Для исторической загрузки итерируй помесячно.
+  severity: critical
+  extracted_from: curated
+
+- operation_id: FinanceAPI_FinanceTransactionListV3
+  api: seller
+  title: filter.date и filter.posting_number — взаимоисключающие
+  description: |
+    Схема использует oneOf — указывай ровно одно из двух. Если передать оба
+    или ни одного, получишь 400.
+  severity: critical
+  extracted_from: curated
+
+- operation_id: FinanceAPI_FinanceTransactionListV3
+  api: seller
+  title: Данные могут отставать от личного кабинета
+  description: |
+    Транзакции попадают в этот endpoint с задержкой агрегации до 24 часов.
+    Если расхождение с ЛК ≤ 24h — это нормально, не баг.
+  severity: warning
+  extracted_from: description
+
+- operation_id: PostingAPI_GetFbsPostingListV3
+  api: seller
+  title: has_next=true не всегда означает что есть ещё данные
+  description: |
+    Из описания: "has_next = true в ответе может значить, что вернули не весь
+    массив отправлений". Иногда возвращает true, но следующий запрос с offset
+    даёт пустой ответ. Останавливайся когда result.postings == [].
+  severity: warning
+  extracted_from: description
+
+- operation_id: PostingAPI_GetFbsPostingListV3
+  api: seller
+  title: Регулярно обновляй информацию для актуальной даты отгрузки
+  description: |
+    Дата отгрузки меняется задним числом — перетягивай записи через
+    last_changed_status_date или ReplacingMergeTree.
+  severity: warning
+  extracted_from: description
+
+- operation_id: ProductAPI_GetProductList
+  api: seller
+  title: Максимум 1000 товаров за запрос
+  description: |
+    limit ≤ 1000. Если используешь filter.offer_id или filter.product_id —
+    тоже не больше 1000 значений суммарно.
+  severity: critical
+  extracted_from: description
+
+- operation_id: ProductAPI_GetProductInfoList
+  api: seller
+  title: Один запрос — одна группа идентификаторов
+  description: |
+    Передавай только offer_id ИЛИ product_id ИЛИ sku в одном запросе. Смешивать
+    нельзя — Ozon вернёт 400.
+  severity: critical
+  extracted_from: description
+
+- operation_id: AnalyticsAPI_AnalyticsGetData
+  api: seller
+  title: Без Premium доступны только 3 месяца истории
+  description: |
+    Для аккаунтов без Premium Plus глубина данных ограничена 3 месяцами и
+    набор dimensions/metrics урезан. Premium Plus открывает год + расширенные
+    метрики (показы, сессии, конверсии).
+  severity: warning
+  extracted_from: description
+
+- operation_id: AnalyticsAPI_AnalyticsGetData
+  api: seller
+  title: Не больше 14 метрик за один запрос
+  description: |
+    metrics.length > 14 → ошибка InvalidArgument. Разделяй на несколько
+    запросов и джойни на стороне клиента.
+  severity: critical
+  extracted_from: description
+
+- operation_id: SubmitRequest
+  api: performance
+  title: Performance API асинхронный
+  description: |
+    POST /api/client/statistics возвращает только UUID запроса, не сам отчёт.
+    Для получения данных дёргай status check + download endpoints. Формат
+    ответа — CSV (или ZIP при нескольких кампаниях).
+  severity: critical
+  extracted_from: description
+
+- operation_id: SubmitRequest
+  api: performance
+  title: Максимальный период — 62 дня
+  description: |
+    Поля from/to не могут охватывать больше 62 дней. Для исторической
+    загрузки итерируй чанками по 60 дней.
+  severity: critical
+  extracted_from: description
+
+- section: Premium-методы
+  api: seller
+  title: Все методы этой секции требуют Premium-подписку
+  description: |
+    Раздел "Premium-методы" доступен только при активной Premium / Premium Plus
+    подписке. Без неё вернётся 403 с пустым телом.
+  severity: warning
+  extracted_from: curated
+
+# --- Live-discovered (verified 2026-04-11 on PREMIUM_PLUS account) ---
+
+- operation_id: PostingAPI_GetFboPostingList
+  api: seller
+  title: filter.since и filter.to обязательны
+  description: |
+    Оба поля required и должны быть UTC date-time. Если передать только одно
+    или ни одного — 400 InvalidArgument. Не пытайся пагинировать без указания
+    периода.
+  severity: critical
+  extracted_from: curated
+
+- operation_id: PostingAPI_GetFboPostingList
+  api: seller
+  title: offset ограничен 20000
+  description: |
+    Максимальное значение offset — 20000. Если за период в окне filter.since/to
+    больше 20000 отправлений — нужно сужать окно, не увеличивать offset.
+  severity: critical
+  extracted_from: description
+
+- operation_id: ListCampaigns
+  api: performance
+  title: Без pageSize ответ может быть очень большим
+  description: |
+    GET /api/client/campaign без pageSize и фильтров возвращает все кампании
+    кабинета. На реальном аккаунте измерено 270+ KB ответа. Для агента это
+    выжигает контекст. Всегда передавай pageSize=20-50 и/или state-фильтр.
+  severity: warning
+  extracted_from: curated
+
+- operation_id: ListReports
+  api: performance
+  title: Возвращает только отчёты, сгенерированные через интерфейс
+  description: |
+    Метод НЕ показывает отчёты, созданные через API (например через SubmitRequest).
+    Те доступны через /api/client/statistics/{UUID} по ID запроса. Для аудита
+    всех отчётов нужно держать собственный реестр UUID-ов на стороне клиента.
+  severity: info
+  extracted_from: curated
+
+- section: Premium-методы
+  api: seller
+  title: PREMIUM_PLUS открывает большинство аналитических методов
+  description: |
+    На реальном PREMIUM_PLUS аккаунте /v1/analytics/data работает с расширенным
+    набором dimensions/metrics и год истории. PREMIUM_PRO добавляет ещё несколько
+    эксклюзивных метрик но это уже редкий случай.
+  severity: info
+  extracted_from: curated
+
+- operation_id: ProductAPI_GetProductInfoList
+  api: seller
+  title: Несуществующий product_id возвращает 200, не 404
+  description: |
+    Если передать в product_id массив с несуществующими идентификаторами, метод
+    вернёт HTTP 200 с пустым items. Это convention Ozon — отсутствие данных не
+    считается ошибкой. Не полагайся на 404 как сигнал — проверяй items.length.
+  severity: warning
+  extracted_from: curated
+
+- operation_id: SellerAPI_SellerInfo
+  api: seller
+  title: Поля рейтингов могут быть null вопреки swagger
+  description: |
+    На некоторых аккаунтах элементы массива ratings содержат past_value=null,
+    хотя schema требует object. Это inconsistency на стороне Ozon — твоя
+    клиентская валидация должна допускать null в past_value/current_value
+    или фильтровать такие записи перед сохранением.
+  severity: warning
+  extracted_from: curated
+
+- operation_id: AnalyticsAPI_AnalyticsGetData
+  api: seller
+  title: Dimension и metrics — массивы строк, не enum
+  description: |
+    Swagger Ozon содержит баг — поля dimension и metrics задекларированы как
+    array of strings без enum, хотя в описании перечислены допустимые значения.
+    Передавай только значения из описания метода (sku, day, week, revenue,
+    ordered_units и т.д.), иначе получишь 400.
+  severity: info
+  extracted_from: curated
+
+- operation_id: FinanceAPI_FinanceTransactionListV3
+  api: seller
+  title: Лимит периода 1 месяц подтверждён live
+  description: |
+    Передача filter.date с диапазоном больше 30 дней возвращает 400
+    "Request validation error: too long period, only one month allowed".
+    Для исторической загрузки итерируй помесячно.
+  severity: critical
+  extracted_from: curated
+
+- operation_id: PostingAPI_GetFboPostingList
+  api: seller
+  title: limit > 1000 → 400 InvalidArgument
+  description: |
+    Передача limit=5000 (или любого > 1000) возвращает
+    "invalid GetSellerAPIPostingListV2Request.Limit: value must be inside range (0, 1000]".
+    Сообщение Ozon содержит точное правило, можно показать пользователю.
+  severity: critical
+  extracted_from: curated
+
+# --- Phase 2 audit findings (2026-04-12) ---
+
+- operation_id: ReportAPI_ReportList
+  api: seller
+  title: report_type приходит в lowercase, но enum в swagger в UPPER_CASE
+  description: |
+    Реальный ответ возвращает report_type='seller_postings' (lowercase),
+    но swagger декларирует enum только из ['SELLER_PRODUCTS','SELLER_TRANSACTIONS',...]
+    в UPPER_CASE. Это inconsistency в swagger Ozon — клиент должен принимать
+    обе формы и нормализовать. Validation против extracted schema провалится.
+  severity: warning
+  extracted_from: curated
+
+- operation_id: GetLimitsList
+  api: performance
+  title: objectType может быть BRAND_SHELF — отсутствует в enum swagger
+  description: |
+    Реальный ответ содержит limits[].objectType='BRAND_SHELF', но swagger
+    декларирует enum только ['SKU','SEARCH_PROMO']. Это пропущенное значение
+    в swagger Ozon. Принимайте любое строковое значение для objectType.
+  severity: warning
+  extracted_from: curated
+
+- operation_id: ListCampaigns
+  api: performance
+  title: placement field может приходить как пустой массив вместо строки
+  description: |
+    Swagger декларирует placement как string, но реальный ответ
+    list[N].placement иногда содержит пустой массив `[]` вместо строки.
+    Это type mismatch в swagger Ozon. Парсеры должны быть defensive.
+  severity: warning
+  extracted_from: curated
+
+- operation_id: UtilizationInfo
+  api: seller
+  title: utilization_settings.utilization_price_defects может быть null
+  description: |
+    Поле декларировано как object, но реально возвращает null когда
+    настройки утилизации не заданы. Обрабатывай как nullable object.
+  severity: info
+  extracted_from: curated
+
+- operation_id: RFBSReturnsAPI_ReturnsRfbsListV2
+  api: seller
+  title: returns может быть пустым массивом вместо object
+  description: |
+    Когда возвратов нет, поле returns в ответе приходит как `[]` (пустой
+    массив), хотя swagger декларирует его как object. Это convention Ozon —
+    проверяй isinstance перед обращением к полям.
+  severity: warning
+  extracted_from: curated
+
+- title: Section "Доставка" имеет slow first call (1300+ ms)
+  description: |
+    Phase 2 audit зафиксировал latency >1300ms на первом вызове методов
+    в секции "Доставка". Это TLS handshake + connection pool warmup, не баг.
+    Последующие вызовы на том же клиенте — 60-120ms. Если у тебя first-call-time
+    важен, прогрей соединение dummy-вызовом /v1/seller/info на старте процесса.
+  severity: info
+  extracted_from: curated
+
+- title: PERMISSION_DENIED на FBP-методах требует подключения к программе
+  description: |
+    FBP (Fulfillment by Partner) — отдельная программа Ozon, доступ
+    выдаётся индивидуально. На обычных аккаунтах ВСЕ FBP-методы возвращают
+    403 PermissionDenied "access denied". Это не баг, проверяй включение
+    в личном кабинете перед интеграцией. Список затронутых методов в каталоге:
+    FbpAPI_FbpOrderList, FbpAPI_FbpCheckActState, FbpWarehouseList, и т.д.
+  severity: warning
+  extracted_from: curated
+
+- title: Многие read-методы требуют непустой filter, хотя swagger required не помечает
+  description: |
+    Phase 2 audit выявил >25 методов которые в swagger имеют filter как
+    optional, но runtime-валидация Ozon возвращает 400 "value is required"
+    если filter отсутствует или пустой. Примеры подтверждённые live:
+      - ProductAPI_GetProductList — filter required
+      - ProductAPI_GetProductAttributesV4 — filter required
+      - FinanceAPI_FinanceTransactionListV3 — filter required (oneOf branch)
+      - ListPostingCodes — filter required
+      - WarehouseOZONList — warehouse_types required (min 1 item)
+      - ReceiptsSellerList — page_size required (range 0..100)
+    Никогда не отправляй пустой body в *.list методы — всегда включай хотя бы
+    минимальный filter с пагинацией.
+  severity: critical
+  extracted_from: curated
+
+# --- Cross-cutting findings from iter 1 audit (2026-04-12) ---
+
+- title: Ozon runtime валидация строже чем swagger
+  description: |
+    Реальный validator на стороне Ozon часто требует поля, которые в swagger
+    помечены как optional. Минимальный body, построенный по схеме, может всё
+    равно вернуть 400. Примеры замеченные live: ProductAPI_GetProductList и
+    ProductAPI_GetProductAttributesV4 требуют непустой filter, хотя в swagger
+    нет required-маркера на filter. FinanceAPI_FinanceTransactionListV3 требует
+    либо filter.date либо filter.posting_number (oneOf в swagger, но без
+    верхнеуровневого required). Не доверяй полностью schema-driven генерации
+    минимальных запросов — всегда читай method description.
+  severity: warning
+  extracted_from: curated
+
+- title: Поля object часто бывают null в реальных ответах
+  description: |
+    Ozon API регулярно возвращает null в полях, которые swagger декларирует
+    как обязательные object. Подтверждённые live случаи (iter 1, 2026-04-12):
+    - SellerAPI_SellerInfo: ratings[].past_value
+    - ProductAPI_GetProductInfoPrices: items[].marketing_actions.current_period_to (string)
+    - WarehouseListV2: warehouses[].pause_at (string)
+    - PostingAPI_GetFboPostingList: result[].financial_data
+    - returnsList: returns[].compensation_status
+    Это inconsistency на стороне Ozon, не баг swagger или MCP. Все парсеры
+    ответов должны принимать null в любом nested object и не падать.
+  severity: warning
+  extracted_from: curated
+
+- operation_id: WarehouseAPI_WarehouseList
+  api: seller
+  title: Метод устаревает (отключение 7 апреля 2026)
+  description: |
+    Метод помечен deprecated в нашем каталоге автоматически. Используй
+    /v2/warehouse/list для FBS/rFBS складов и /v1/cluster/list для FBO.
+    Текущий метод отключается 7 апреля 2026.
+  severity: critical
+  extracted_from: description
+
+- operation_id: WarehouseAPI_DeliveryMethodList
+  api: seller
+  title: Метод устаревает (отключение 7 апреля 2026)
+  description: |
+    Используй /v2/delivery-method/list. Старая версия отключается 7 апреля 2026.
+  severity: critical
+  extracted_from: description
+
+- operation_id: FbpAPI_FbpOrderList
+  api: seller
+  title: FBP-методы требуют отдельного подключения
+  description: |
+    FBP (Fulfillment by Partner) — отдельная программа Ozon, доступ
+    выдаётся индивидуально. На обычных аккаунтах FBP-методы возвращают
+    403 PermissionDenied "access denied". Если получаешь 403 на FBP —
+    это не баг твоего кода, кабинет просто не подключён к FBP.
+  severity: warning
+  extracted_from: curated
+
+- operation_id: ReviewAPI_ReviewCount
+  api: seller
+  title: Отзывы могут быть недоступны даже на PREMIUM_PLUS
+  description: |
+    На реальном PREMIUM_PLUS аккаунте этот метод вернул 403
+    "PermissionDenied: not available with existing subscription".
+    Это означает что доступ к review-методам гейтится не только тиром
+    подписки, но и отдельным флагом включения в кабинете. Проверяй через
+    Личный Кабинет → Отзывы → API доступ перед интеграцией.
+  severity: warning
+  extracted_from: curated
+
+# --- Backend integration findings (2026-04-13) ---
+
+- operation_id: AccessAPI_RolesByToken
+  api: seller
+  title: Метод read-only несмотря на POST без read-маркеров
+  description: |
+    /v1/roles возвращает expires_at, список ролей и доступных методов.
+    Никаких побочных эффектов. Heuristic classifier ошибочно помечает как write
+    (POST без get/list/info в пути). Переопределён в safety_overrides.yaml.
+    Live-verified 2026-04-13.
+  severity: info
+  extracted_from: curated
+
+- operation_id: ProductAPI_GetProductInfoPrices
+  api: seller
+  title: visibility filter READY_TO_SUPPLY — superset, включает IN_SALE
+  description: |
+    Фильтр visibility=READY_TO_SUPPLY возвращает товары которые уже в продаже
+    (IN_SALE) плюс те что готовы но ещё не продаются. Это superset, не exclusive.
+    Для подсчёта "готово к продаже но не продаётся" считай total - in_sale.
+    Live-verified 2026-04-13: READY_TO_SUPPLY=24, IN_SALE=16, разница=8.
+  severity: warning
+  extracted_from: curated
+
+- operation_id: SellerAPI_SellerInfo
+  api: seller
+  title: tax_system USN не означает "без НДС" с 2025 года
+  description: |
+    С 2025 года в РФ ИП/ООО на УСН с оборотом >60 млн платят НДС по ставке
+    5% или 7%. Поле tax_system=USN больше не равно "без НДС".
+    Ставка НДС — атрибут товара (price.vat в /v5/product/info/prices),
+    не компании. Не выводи "без НДС" автоматически по tax_system.
+    Live-verified 2026-04-13: USN аккаунт с НДС 7% на товарах.
+  severity: warning
+  extracted_from: curated
+
+- operation_id: SellerAPI_SellerInfo
+  api: seller
+  title: 403 "Company is blocked" — аккаунт заблокирован Ozon
+  description: |
+    При вызове /v1/seller/info на заблокированном аккаунте Ozon возвращает
+    HTTP 403 с телом {"code":7,"message":"Company is blocked, please contact support"}.
+    Это не проблема API-ключа — весь кабинет продавца заблокирован.
+    Отображай пользователю понятное сообщение, а не "HTTP 403".
+    Live-verified 2026-04-13 на заблокированном аккаунте.
+  severity: warning
+  extracted_from: curated
+
+- operation_id: ProductAPI_GetProductInfoPrices
+  api: seller
+  title: price_indexes полнее чем в /v3/product/info/list
+  description: |
+    price_indexes в /v5/product/info/prices содержит вложенные объекты
+    external_index_data, ozon_index_data, self_marketplaces_index_data
+    с числовым полем price_index_value (float). В /v3/product/info/list
+    price_indexes содержит только color_index (строку).
+    Для получения числового индекса цен используй /v5/product/info/prices.
+    Live-verified 2026-04-13: color_index=SUPER, price_index_value=0.12.
+  severity: info
+  extracted_from: curated
+
+- operation_id: ProductAPI_GetProductInfoPrices
+  api: seller
+  title: marketing_seller_price — реальная цена покупателя
+  description: |
+    price.marketing_seller_price — цена с учётом акций продавца, которую видит
+    покупатель. price.price — цена продавца до акций Ozon. price.old_price —
+    зачёркнутая цена (до скидок). Для отображения "цена продажи" используй
+    marketing_seller_price, а не price. Разница может быть существенной:
+    price=7690, marketing_seller_price=7290.
+    Live-verified 2026-04-13.
+  severity: warning
+  extracted_from: curated
+
+- operation_id: ProductAPI_GetProductInfoPrices
+  api: seller
+  title: net_price — себестоимость, указанная продавцом вручную
+  description: |
+    price.net_price — себестоимость товара, которую продавец сам вводит
+    в карточке товара на Ozon. Это не расчётное поле. Может быть 0 или null
+    если продавец не заполнил. Для расчёта маржинальности используй формулу:
+    маржа = (marketing_seller_price - commission% - net_price) / marketing_seller_price.
+    Комиссия = marketing_seller_price × sales_percent_fbo (или fbs) / 100.
+    Логистика и эквайринг не учитываются в этих полях.
+  severity: info
+  extracted_from: curated
+
+- operation_id: DescriptionCategoryAPI_GetTree
+  api: seller
+  title: дерево категорий рекурсивное, нужен flatten
+  description: |
+    /v1/description-category/tree возвращает вложенное дерево с полями
+    description_category_id, category_name, type_name, children[].
+    Для маппинга category_id → name нужно рекурсивно обойти все children
+    и построить плоский dict. Листовые узлы имеют type_id + type_name.
+    category_name может быть общей ("Бытовая техника"), type_name — конкретной
+    ("Пылесосы"). Для отображения пользователю предпочтительнее category_name
+    из leaf-узла, где есть description_category_id совпадающий с товаром.
+    Live-verified 2026-04-13: 8 уникальных категорий из 31 товара.
+  severity: info
+  extracted_from: curated
+
+- operation_id: ProductAPI_GetProductInfoList
+  api: seller
+  title: stocks.present включает reserved
+  description: |
+    В ответе stocks[].present — это ОБЩЕЕ количество на складе, включая
+    зарезервированное (reserved). Доступный остаток = present - reserved.
+    Для отображения "сколько можно продать" вычитай reserved.
+    Пример: present=9464, reserved=13, доступно=9451.
+    Live-verified 2026-04-13.
+  severity: warning
+  extracted_from: curated
+
+- title: Deprecated методы автоматически помечены в каталоге
+  description: |
+    Auto-extraction просканировала описания на маркеры устаревания
+    ("устаревает", "устарел", "deprecated", "obsolete", "будет отключён",
+    "переключитесь на") и пометила ~20 методов. В ozon_describe_method
+    выводится поле deprecated и deprecation_note. В ozon_search_methods
+    deprecated методы исключены по умолчанию (используй include_deprecated=true
+    чтобы их увидеть). Не рекомендуй deprecated методы в новых интеграциях.
+  severity: info
+  extracted_from: curated
+
+# --- Phase 3 additions (2026-04-17): business context for the key methods ---
+#
+# These quirks are NOT about edge cases — they're about *why* a method
+# matters and *when* to reach for it. Claude needs both kinds of context:
+# the technical gotcha (already covered above) and the business intent.
+
+- operation_id: AnalyticsAPI_StocksTurnover
+  api: seller
+  title: "Бизнес-контекст: главная метрика для планирования закупок"
+  description: |
+    Один вызов даёт по каждому SKU: ads (average daily sales),
+    idc (inventory days cover — сколько дней хватит остатка), turnover_grade
+    (DEFICIT / OPTIMAL / EXCESS / NO_SALES).
+  business_context: |
+    Главная метрика для планирования закупок. idc=8 значит остаток
+    закончится через 8 дней при текущей скорости продаж. turnover_grade=
+    DEFICIT — нужна срочная допоставка. EXCESS (idc > 120) — Ozon начнёт
+    начислять плату за хранение. NO_SALES — товар не продаётся, кандидат
+    на снятие с продажи.
+  when_to_use:
+    - Ежедневный мониторинг OOS-рисков
+    - Планирование поставок FBO раз в день
+    - Выявление затоваренных позиций
+    - Определение SKU-кандидатов на снятие с продажи
+  common_mistakes:
+    - Вызывать в цикле без задержки — гарантированный 429 (1 req/min лимит)
+    - Считать turnover_grade=CRITICAL только дефицитом — бывает и оверсток
+    - Игнорировать ads=0 в DEFICIT — товар может быть просто новый
+  severity: info
+  extracted_from: curated
+
+- operation_id: RatingAPI_RatingSummaryV1
+  api: seller
+  title: "Бизнес-контекст: метрики здоровья кабинета от Ozon"
+  description: |
+    Read-only без параметров. Возвращает группы рейтингов
+    (Выполнение заказов, Качество сервиса, Цены) с current_value, status
+    (OK/WARNING/CRITICAL) и premium_scores с суммой штрафов.
+  business_context: |
+    Если любой рейтинг достигает WARNING или CRITICAL — Ozon снижает
+    видимость товаров в выдаче. На CRITICAL может временно
+    блокировать продажи или начислять штрафные баллы.
+    penalty_score_exceeded=true — превышение лимита штрафов, требуется
+    немедленная реакция (продавец на грани блокировки).
+    Самые частые проблемы: rating_on_time (доставка вовремя),
+    rating_review_avg_score (отзывы), rating_price_index (индекс цен).
+  when_to_use:
+    - Ежедневный health-check кабинета
+    - Диагностика падения продаж (часто корень — упавший рейтинг)
+    - Алерты "ratings.status=CRITICAL" в мониторинге
+  common_mistakes:
+    - Игнорировать WARNING — статусы быстро деградируют до CRITICAL
+    - Не сохранять историю рейтингов — тренд важнее снимка
+    - Реагировать только на ratings, забывая про penalty_score
+  severity: info
+  extracted_from: curated
+
+- operation_id: ProductAPI_GetProductRatingBySku
+  api: seller
+  title: "Бизнес-контекст: контент-рейтинг и поисковое ранжирование"
+  description: |
+    Контент-рейтинг карточки 0-100 + improve_attributes — конкретный
+    список характеристик которые надо заполнить чтобы рейтинг вырос.
+  business_context: |
+    Контент-рейтинг напрямую влияет на ранжирование в поиске Ozon.
+    rating < 40 — карточка почти не показывается даже на релевантных
+    запросах. rating 40-70 — посредственно, простор для роста. rating
+    > 90 — отлично. Каждые +10 к рейтингу заметно улучшают позиции.
+    improve_attributes содержит конкретный actionable список — не
+    нужно гадать что заполнять.
+  when_to_use:
+    - Аудит контента нового ассортимента после массового импорта
+    - Диагностика низких продаж при достаточном остатке и нормальной цене
+    - Регулярный (раз в неделю) анализ для контент-менеджеров
+  common_mistakes:
+    - Ждать мгновенного эффекта — рейтинг пересчитывается раз в сутки
+    - Заполнять только image-атрибуты — характеристики дают больше баллов
+    - Игнорировать improve_at_least — это число баллов которое можно поднять
+  severity: info
+  extracted_from: curated
+
+- operation_id: ProductAPI_GetProductInfoPrices
+  api: seller
+  title: "Бизнес-контекст: ценообразование и индекс рыночных цен"
+  description: |
+    Цены, комиссии Ozon (sales_percent_fbo/fbs), price_indexes (числовой
+    price_index_value и color_index ∈ {SUPER, GOOD, AVERAGE, RED, YELLOW,
+    WITHOUT_INDEX}), marketing_actions (активные акции).
+  business_context: |
+    color_index=RED означает что цена выше рынка — Ozon сильно понижает
+    позицию в выдаче. YELLOW — заметно дороже конкурентов, тоже минус
+    к ранжированию. SUPER/GOOD — конкурентная цена. WITHOUT_INDEX — Ozon
+    не нашёл аналогов для сравнения, не ошибка. price_index_value > 1.0
+    — дороже рынка, < 1.0 — дешевле. marketing_actions показывает
+    активные акции по товару — там можно скорректировать цену без
+    изменения базовой.
+  when_to_use:
+    - Ежедневный мониторинг ценовой конкурентности
+    - Подготовка к промо-кампаниям и распродажам
+    - Расчёт юнит-экономики (нужны реальные комиссии)
+    - Проверка перед массовой корректировкой цен
+  common_mistakes:
+    - Сравнивать price без учёта marketing_seller_price (реальная цена покупателя)
+    - Игнорировать min_price — Ozon не примет цену ниже этого порога
+    - Считать комиссию фиксированной — sales_percent_fbo меняется по категориям
+    - Менять базовую цену не учитывая активные акции
+  severity: info
+  extracted_from: curated
+
+- operation_id: AnalyticsAPI_AnalyticsStocks
+  api: seller
+  title: "Бизнес-контекст: остатки в разрезе складов FBO"
+  description: |
+    Premium-метод. Возвращает items с warehouse_name, sku,
+    available_stock_count, valid_stock_count (не просрочено),
+    expiring_stock_count, excess_stock_count, idc_cluster.
+  business_context: |
+    Это единственный способ узнать остаток ПО КАЖДОМУ СКЛАДУ FBO,
+    а не суммарный. expiring_stock_count > 0 — критично для FMCG /
+    лекарств, истекает срок годности. excess_stock_count > 0 — излишки,
+    Ozon начнёт списывать стоимость хранения. idc_cluster < 14 —
+    дефицит на конкретном складе (даже если суммарно по всем складам
+    остаток нормальный). Используй для кросс-складского анализа:
+    избыток на A + дефицит на B → переброска или допоставка только на B.
+  when_to_use:
+    - Планирование пополнения складов FBO раздельно
+    - Реакция на сигналы Ozon о платном хранении
+    - Контроль FMCG / sunset-категорий со сроком годности
+    - Аналитика логистических затрат по регионам
+  common_mistakes:
+    - Считать stock = sum(present по всем складам) — не вычитает резервы и просрочку
+    - Игнорировать expiring_stock для категорий со сроком годности
+    - Применять для FBS-складов — там данных нет, только FBO
+  severity: info
+  extracted_from: curated
+
+- operation_id: PostingAPI_GetFboPostingList
+  api: seller
+  title: "Бизнес-контекст: реальная выручка из заказов FBO"
+  description: |
+    FBO-отправления (заказы). Каждое — это пользовательский чек.
+    Включай with.analytics_data и with.financial_data чтобы получить
+    выручку, комиссии и геоданные одним round-trip.
+  business_context: |
+    Главный источник выручки для FBO-продавцов. financial_data.posting_
+    services даёт разбивку комиссий Ozon по конкретному заказу — это
+    единственный точный источник для расчёта маржинальности (FinanceAPI/
+    transaction агрегирует, но с задержкой 24h). analytics_data.
+    warehouse_name + city позволяет строить геораспределение спроса.
+    in_process_at — момент создания заказа, важно для time-series выручки.
+  when_to_use:
+    - Real-time дашборд заказов (свежее чем FinanceAPI)
+    - Расчёт маржи на уровне отдельного заказа
+    - Геоаналитика спроса по регионам и складам
+    - Cohort-анализ повторных покупателей (по customer_id)
+  common_mistakes:
+    - Не включать with.financial_data — потом гонять ещё один запрос
+    - Брать price из products[].price без учёта commission — это валовая выручка
+    - Считать выручку до status=delivered — отмены искажают картину
+    - Игнорировать cancelled-заказы — нужно для расчёта cancel rate
+  severity: info
+  extracted_from: curated
+
+# --- Phase 3 (2026-04-17): auto-generated safety_warning entries ---
+# Covers all 38 destructive methods + ~5 high-impact write methods.
+# Source: catalog scan; safety_warning text is the canonical reminder
+# that ozon_call_method enforces confirm_write / double-confirm.
+
+- operation_id: ProductAPI_ProductArchive
+  api: seller
+  title: DESTRUCTIVE — Перенести товар в архив
+  description: path segment 'archive' contains 'archive'
+  severity: critical
+  extracted_from: curated
+  safety_warning: DESTRUCTIVE метод — необратимо удаляет/отменяет/архивирует данные. ozon_call_method
+    требует confirm_write=True И i_understand_this_modifies_data=True. После выполнения отменить нельзя.
+- operation_id: ProductAPI_ProductUnarchive
+  api: seller
+  title: DESTRUCTIVE — Вернуть товар из архива
+  description: path segment 'unarchive' contains 'unarchive'
+  severity: critical
+  extracted_from: curated
+  safety_warning: DESTRUCTIVE метод — необратимо удаляет/отменяет/архивирует данные. ozon_call_method
+    требует confirm_write=True И i_understand_this_modifies_data=True. После выполнения отменить нельзя.
+- operation_id: ProductAPI_DeleteProducts
+  api: seller
+  title: DESTRUCTIVE — Удалить товар без SKU из архива
+  description: path segment 'delete' contains 'delete'
+  severity: critical
+  extracted_from: curated
+  safety_warning: DESTRUCTIVE метод — необратимо удаляет/отменяет/архивирует данные. ozon_call_method
+    требует confirm_write=True И i_understand_this_modifies_data=True. После выполнения отменить нельзя.
+- operation_id: promos_task_decline
+  api: seller
+  title: DESTRUCTIVE — Отклонить заявку на скидку
+  description: path segment 'decline' contains 'decline'
+  severity: critical
+  extracted_from: curated
+  safety_warning: DESTRUCTIVE метод — необратимо удаляет/отменяет/архивирует данные. ozon_call_method
+    требует confirm_write=True И i_understand_this_modifies_data=True. После выполнения отменить нельзя.
+- operation_id: pricing_items-delete
+  api: seller
+  title: DESTRUCTIVE — Удалить товары из стратегии
+  description: path segment 'delete' contains 'delete'
+  severity: critical
+  extracted_from: curated
+  safety_warning: DESTRUCTIVE метод — необратимо удаляет/отменяет/архивирует данные. ozon_call_method
+    требует confirm_write=True И i_understand_this_modifies_data=True. После выполнения отменить нельзя.
+- operation_id: pricing_delete
+  api: seller
+  title: DESTRUCTIVE — Удалить стратегию
+  description: path segment 'delete' contains 'delete'
+  severity: critical
+  extracted_from: curated
+  safety_warning: DESTRUCTIVE метод — необратимо удаляет/отменяет/архивирует данные. ozon_call_method
+    требует confirm_write=True И i_understand_this_modifies_data=True. После выполнения отменить нельзя.
+- operation_id: carriagePassDelete
+  api: seller
+  title: DESTRUCTIVE — Удалить пропуск
+  description: path segment 'delete' contains 'delete'
+  severity: critical
+  extracted_from: curated
+  safety_warning: DESTRUCTIVE метод — необратимо удаляет/отменяет/архивирует данные. ozon_call_method
+    требует confirm_write=True И i_understand_this_modifies_data=True. После выполнения отменить нельзя.
+- operation_id: returnPassDelete
+  api: seller
+  title: DESTRUCTIVE — Удалить пропуск для возврата
+  description: path segment 'delete' contains 'delete'
+  severity: critical
+  extracted_from: curated
+  safety_warning: DESTRUCTIVE метод — необратимо удаляет/отменяет/архивирует данные. ozon_call_method
+    требует confirm_write=True И i_understand_this_modifies_data=True. После выполнения отменить нельзя.
+- operation_id: CertificateDelete
+  api: seller
+  title: DESTRUCTIVE — Удалить сертификат
+  description: path segment 'delete' contains 'delete'
+  severity: critical
+  extracted_from: curated
+  safety_warning: DESTRUCTIVE метод — необратимо удаляет/отменяет/архивирует данные. ozon_call_method
+    требует confirm_write=True И i_understand_this_modifies_data=True. После выполнения отменить нельзя.
+- operation_id: ArchiveWarehouseFBS
+  api: seller
+  title: DESTRUCTIVE — Перенести склад в архив
+  description: path segment 'archive' contains 'archive'
+  severity: critical
+  extracted_from: curated
+  safety_warning: DESTRUCTIVE метод — необратимо удаляет/отменяет/архивирует данные. ozon_call_method
+    требует confirm_write=True И i_understand_this_modifies_data=True. После выполнения отменить нельзя.
+- operation_id: UnarchiveWarehouseFBS
+  api: seller
+  title: DESTRUCTIVE — Перенести склад из архива
+  description: path segment 'unarchive' contains 'unarchive'
+  severity: critical
+  extracted_from: curated
+  safety_warning: DESTRUCTIVE метод — необратимо удаляет/отменяет/архивирует данные. ozon_call_method
+    требует confirm_write=True И i_understand_this_modifies_data=True. После выполнения отменить нельзя.
+- operation_id: CargoesAPI_CargoesDelete
+  api: seller
+  title: DESTRUCTIVE — Удалить грузоместо в заявке на поставку
+  description: path segment 'delete' contains 'delete'
+  severity: critical
+  extracted_from: curated
+  safety_warning: DESTRUCTIVE метод — необратимо удаляет/отменяет/архивирует данные. ozon_call_method
+    требует confirm_write=True И i_understand_this_modifies_data=True. После выполнения отменить нельзя.
+- operation_id: SupplyOrderAPI_SupplyOrderCancel
+  api: seller
+  title: DESTRUCTIVE — Отменить заявку на поставку
+  description: path segment 'cancel' contains 'cancel'
+  severity: critical
+  extracted_from: curated
+  safety_warning: DESTRUCTIVE метод — необратимо удаляет/отменяет/архивирует данные. ozon_call_method
+    требует confirm_write=True И i_understand_this_modifies_data=True. После выполнения отменить нельзя.
+- operation_id: CarriageAPI_CarriageCancel
+  api: seller
+  title: DESTRUCTIVE — Удаление отгрузки
+  description: path segment 'cancel' contains 'cancel'
+  severity: critical
+  extracted_from: curated
+  safety_warning: DESTRUCTIVE метод — необратимо удаляет/отменяет/архивирует данные. ozon_call_method
+    требует confirm_write=True И i_understand_this_modifies_data=True. После выполнения отменить нельзя.
+- operation_id: PostingAPI_GetPostingFbsCancelReasonV1
+  api: seller
+  title: DESTRUCTIVE — Причины отмены отправления
+  description: path segment 'cancel-reason' contains 'cancel'
+  severity: critical
+  extracted_from: curated
+  safety_warning: DESTRUCTIVE метод — необратимо удаляет/отменяет/архивирует данные. ozon_call_method
+    требует confirm_write=True И i_understand_this_modifies_data=True. После выполнения отменить нельзя.
+- operation_id: PostingAPI_CancelFbsPostingProduct
+  api: seller
+  title: DESTRUCTIVE — Отменить отправку некоторых товаров в отправлении
+  description: path segment 'cancel' contains 'cancel'
+  severity: critical
+  extracted_from: curated
+  safety_warning: DESTRUCTIVE метод — необратимо удаляет/отменяет/архивирует данные. ozon_call_method
+    требует confirm_write=True И i_understand_this_modifies_data=True. После выполнения отменить нельзя.
+- operation_id: PostingAPI_CancelFbsPosting
+  api: seller
+  title: DESTRUCTIVE — Отменить отправление
+  description: path segment 'cancel' contains 'cancel'
+  severity: critical
+  extracted_from: curated
+  safety_warning: DESTRUCTIVE метод — необратимо удаляет/отменяет/архивирует данные. ozon_call_method
+    требует confirm_write=True И i_understand_this_modifies_data=True. После выполнения отменить нельзя.
+- operation_id: RFBSReturnsAPI_ReturnsRfbsRejectV2
+  api: seller
+  title: DESTRUCTIVE — Отклонить заявку на возврат
+  description: path segment 'reject' contains 'reject'
+  severity: critical
+  extracted_from: curated
+  safety_warning: DESTRUCTIVE метод — необратимо удаляет/отменяет/архивирует данные. ozon_call_method
+    требует confirm_write=True И i_understand_this_modifies_data=True. После выполнения отменить нельзя.
+- operation_id: CancellationAPI_ConditionalCancellationRejectV2
+  api: seller
+  title: DESTRUCTIVE — Отклонить заявку на отмену rFBS
+  description: path segment 'reject' contains 'reject'
+  severity: critical
+  extracted_from: curated
+  safety_warning: DESTRUCTIVE метод — необратимо удаляет/отменяет/архивирует данные. ozon_call_method
+    требует confirm_write=True И i_understand_this_modifies_data=True. После выполнения отменить нельзя.
+- operation_id: invoice_delete
+  api: seller
+  title: DESTRUCTIVE — Удалить ссылку на счёт-фактуру
+  description: path segment 'delete' contains 'delete'
+  severity: critical
+  extracted_from: curated
+  safety_warning: DESTRUCTIVE метод — необратимо удаляет/отменяет/архивирует данные. ozon_call_method
+    требует confirm_write=True И i_understand_this_modifies_data=True. После выполнения отменить нельзя.
+- operation_id: WarehouseFbsPickUpCourierCancel
+  api: seller
+  title: DESTRUCTIVE — Отменить вызов курьера на забор отгрузки pick-up
+  description: path segment 'cancel' contains 'cancel'
+  severity: critical
+  extracted_from: curated
+  safety_warning: DESTRUCTIVE метод — необратимо удаляет/отменяет/архивирует данные. ozon_call_method
+    требует confirm_write=True И i_understand_this_modifies_data=True. После выполнения отменить нельзя.
+- operation_id: PolygonDelete
+  api: seller
+  title: DESTRUCTIVE — Удалить полигон из области доставки
+  description: path segment 'delete' contains 'delete'
+  severity: critical
+  extracted_from: curated
+  safety_warning: DESTRUCTIVE метод — необратимо удаляет/отменяет/архивирует данные. ozon_call_method
+    требует confirm_write=True И i_understand_this_modifies_data=True. После выполнения отменить нельзя.
+- operation_id: ReviewAPI_CommentDelete
+  api: seller
+  title: DESTRUCTIVE — Удалить комментарий на отзыв
+  description: path segment 'delete' contains 'delete'
+  severity: critical
+  extracted_from: curated
+  safety_warning: DESTRUCTIVE метод — необратимо удаляет/отменяет/архивирует данные. ozon_call_method
+    требует confirm_write=True И i_understand_this_modifies_data=True. После выполнения отменить нельзя.
+- operation_id: QuestionAnswer_Delete
+  api: seller
+  title: DESTRUCTIVE — Удалить ответ на вопрос
+  description: path segment 'delete' contains 'delete'
+  severity: critical
+  extracted_from: curated
+  safety_warning: DESTRUCTIVE метод — необратимо удаляет/отменяет/архивирует данные. ozon_call_method
+    требует confirm_write=True И i_understand_this_modifies_data=True. После выполнения отменить нельзя.
+- operation_id: SellerActionsProductsDelete
+  api: seller
+  title: DESTRUCTIVE — Удалить товары из акции
+  description: path segment 'delete' contains 'delete'
+  severity: critical
+  extracted_from: curated
+  safety_warning: DESTRUCTIVE метод — необратимо удаляет/отменяет/архивирует данные. ozon_call_method
+    требует confirm_write=True И i_understand_this_modifies_data=True. После выполнения отменить нельзя.
+- operation_id: SellerActionsArchive
+  api: seller
+  title: DESTRUCTIVE — Перенести акцию в архив
+  description: path segment 'archive' contains 'archive'
+  severity: critical
+  extracted_from: curated
+  safety_warning: DESTRUCTIVE метод — необратимо удаляет/отменяет/архивирует данные. ozon_call_method
+    требует confirm_write=True И i_understand_this_modifies_data=True. После выполнения отменить нельзя.
+- operation_id: DeleteNotification
+  api: seller
+  title: DESTRUCTIVE — Удалить URL-адрес для уведомлений
+  description: path segment 'delete' contains 'delete'
+  severity: critical
+  extracted_from: curated
+  safety_warning: DESTRUCTIVE метод — необратимо удаляет/отменяет/архивирует данные. ozon_call_method
+    требует confirm_write=True И i_understand_this_modifies_data=True. После выполнения отменить нельзя.
+- operation_id: FbpDraftDirectDelete
+  api: seller
+  title: DESTRUCTIVE — Удалить черновик заявки на поставку
+  description: path segment 'delete' contains 'delete'
+  severity: critical
+  extracted_from: curated
+  safety_warning: DESTRUCTIVE метод — необратимо удаляет/отменяет/архивирует данные. ozon_call_method
+    требует confirm_write=True И i_understand_this_modifies_data=True. После выполнения отменить нельзя.
+- operation_id: FbpDraftDropOffDelete
+  api: seller
+  title: DESTRUCTIVE — Удалить черновик для доставки в drop-off пункт
+  description: path segment 'delete' contains 'delete'
+  severity: critical
+  extracted_from: curated
+  safety_warning: DESTRUCTIVE метод — необратимо удаляет/отменяет/архивирует данные. ozon_call_method
+    требует confirm_write=True И i_understand_this_modifies_data=True. После выполнения отменить нельзя.
+- operation_id: FbpAPI_FbpOrderDirectCancel
+  api: seller
+  title: DESTRUCTIVE — Отменить поставку
+  description: path segment 'cancel' contains 'cancel'
+  severity: critical
+  extracted_from: curated
+  safety_warning: DESTRUCTIVE метод — необратимо удаляет/отменяет/архивирует данные. ozon_call_method
+    требует confirm_write=True И i_understand_this_modifies_data=True. После выполнения отменить нельзя.
+- operation_id: FbpAPI_FbpDraftPickUpDelete
+  api: seller
+  title: DESTRUCTIVE — Отменить черновик заявки на pick-up поставку
+  description: path segment 'delete' contains 'delete'
+  severity: critical
+  extracted_from: curated
+  safety_warning: DESTRUCTIVE метод — необратимо удаляет/отменяет/архивирует данные. ozon_call_method
+    требует confirm_write=True И i_understand_this_modifies_data=True. После выполнения отменить нельзя.
+- operation_id: FbpAPI_FbpOrderDropOffCancel
+  api: seller
+  title: DESTRUCTIVE — Отменить поставку drop-off
+  description: path segment 'cancel' contains 'cancel'
+  severity: critical
+  extracted_from: curated
+  safety_warning: DESTRUCTIVE метод — необратимо удаляет/отменяет/архивирует данные. ozon_call_method
+    требует confirm_write=True И i_understand_this_modifies_data=True. После выполнения отменить нельзя.
+- operation_id: FbpAPI_FbpOrderPickUpCancel
+  api: seller
+  title: DESTRUCTIVE — Отменить pick-up поставку
+  description: path segment 'cancel' contains 'cancel'
+  severity: critical
+  extracted_from: curated
+  safety_warning: DESTRUCTIVE метод — необратимо удаляет/отменяет/архивирует данные. ozon_call_method
+    требует confirm_write=True И i_understand_this_modifies_data=True. После выполнения отменить нельзя.
+- operation_id: OrderAPI_OrderCancel
+  api: seller
+  title: DESTRUCTIVE — Отменить заказ
+  description: path segment 'cancel' contains 'cancel'
+  severity: critical
+  extracted_from: curated
+  safety_warning: DESTRUCTIVE метод — необратимо удаляет/отменяет/архивирует данные. ozon_call_method
+    требует confirm_write=True И i_understand_this_modifies_data=True. После выполнения отменить нельзя.
+- operation_id: OrderAPI_OrderCancelCheck
+  api: seller
+  title: DESTRUCTIVE — Проверить возможность отмены заказа
+  description: operationId contains 'cancel'
+  severity: critical
+  extracted_from: curated
+  safety_warning: DESTRUCTIVE метод — необратимо удаляет/отменяет/архивирует данные. ozon_call_method
+    требует confirm_write=True И i_understand_this_modifies_data=True. После выполнения отменить нельзя.
+- operation_id: PostingAPI_PostingCancel
+  api: seller
+  title: DESTRUCTIVE — Отменить отправление из заказа
+  description: path segment 'cancel' contains 'cancel'
+  severity: critical
+  extracted_from: curated
+  safety_warning: DESTRUCTIVE метод — необратимо удаляет/отменяет/архивирует данные. ozon_call_method
+    требует confirm_write=True И i_understand_this_modifies_data=True. После выполнения отменить нельзя.
+- operation_id: DeleteProducts
+  api: performance
+  title: DESTRUCTIVE — Удалить товары из кампании
+  description: path segment 'delete' contains 'delete'
+  severity: critical
+  extracted_from: curated
+  safety_warning: DESTRUCTIVE метод — необратимо удаляет/отменяет/архивирует данные. ozon_call_method
+    требует confirm_write=True И i_understand_this_modifies_data=True. После выполнения отменить нельзя.
+- operation_id: ExternalCampaign_DeleteSearchPromoBidsV2
+  api: performance
+  title: DESTRUCTIVE — Удалить товар из продвижения в оплате за заказ
+  description: path segment 'delete' contains 'delete'
+  severity: critical
+  extracted_from: curated
+  safety_warning: DESTRUCTIVE метод — необратимо удаляет/отменяет/архивирует данные. ozon_call_method
+    требует confirm_write=True И i_understand_this_modifies_data=True. После выполнения отменить нельзя.
+- operation_id: ProductAPI_ImportProductsV3
+  api: seller
+  title: WRITE — Создать или обновить товар
+  description: path segment 'import' contains 'import'
+  severity: warning
+  extracted_from: curated
+  safety_warning: WRITE метод — изменяет данные в кабинете Ozon. ozon_call_method требует confirm_write=True.
+    Проверь схему через ozon_describe_method перед вызовом.
+- operation_id: PostingAPI_ShipFbsPostingV4
+  api: seller
+  title: WRITE — Собрать заказ (версия 4)
+  description: path segment 'ship' contains 'ship'
+  severity: warning
+  extracted_from: curated
+  safety_warning: WRITE метод — изменяет данные в кабинете Ozon. ozon_call_method требует confirm_write=True.
+    Проверь схему через ozon_describe_method перед вызовом.
+- operation_id: SubmitRequest
+  api: performance
+  title: WRITE — Статистика по кампании
+  description: operationId contains 'request'
+  severity: warning
+  extracted_from: curated
+  safety_warning: WRITE метод — изменяет данные в кабинете Ozon. ozon_call_method требует confirm_write=True.
+    Проверь схему через ozon_describe_method перед вызовом.
+- operation_id: ActivateCampaign
+  api: performance
+  title: WRITE — Активировать кампанию
+  description: path segment 'activate' contains 'activate'
+  severity: warning
+  extracted_from: curated
+  safety_warning: WRITE метод — изменяет данные в кабинете Ozon. ozon_call_method требует confirm_write=True.
+    Проверь схему через ozon_describe_method перед вызовом.
+- operation_id: DeactivateCampaign
+  api: performance
+  title: WRITE — Выключить кампанию
+  description: path segment 'deactivate' contains 'deactivate'
+  severity: warning
+  extracted_from: curated
+  safety_warning: WRITE метод — изменяет данные в кабинете Ozon. ozon_call_method требует confirm_write=True.
+    Проверь схему через ozon_describe_method перед вызовом.
+
+
+- operation_id: ProductAPI_GetProductList
+  api: seller
+  title: Бизнес-контекст — отправная точка каталога
+  description: >
+    Список идентификаторов всех товаров кабинета (product_id и offer_id) —
+    используется как первый шаг перед вытаскиванием полных данных через
+    GetProductInfoList / GetProductInfoPrices / ProductInfoStocks.
+  severity: info
+  extracted_from: curated
+  business_context: >
+    Отправная точка для любой работы с каталогом товаров.
+    Возвращает список product_id и offer_id всех товаров кабинета.
+    Сам по себе содержит минимум данных — используется для получения
+    идентификаторов, которые затем передаются в GetProductInfoList
+    и GetProductInfoPrices для получения полных данных.
+  when_to_use:
+    - "Первый шаг при синхронизации каталога"
+    - "Получение списка всех product_id для batch-запросов"
+    - "Проверка общего количества товаров в кабинете"
+  common_mistakes:
+    - >
+      Ожидать получить цены и остатки — этот метод возвращает только
+      идентификаторы. Для полных данных нужен ProductAPI_GetProductInfoPrices.
+    - >
+      Не использовать ozon_fetch_all — по умолчанию возвращает
+      только первую страницу (1000 товаров).
+
+- operation_id: WarehouseListV2
+  api: seller
+  title: Бизнес-контекст — только FBS/rFBS склады
+  description: >
+    Возвращает FBS и rFBS склады продавца. FBO-склады принадлежат Ozon и
+    в ответе не присутствуют — их наличие определяется по стокам товаров.
+  severity: info
+  extracted_from: curated
+  business_context: >
+    Возвращает список FBS и rFBS складов продавца.
+    Важно: FBO-склады принадлежат Ozon и через этот метод
+    не возвращаются. Используется для определения
+    capability кабинета (есть ли у продавца FBS).
+    Результат статичен — склады меняются редко.
+  when_to_use:
+    - "Определить схему работы кабинета (FBO/FBS/rFBS)"
+    - "Получить warehouse_id для фильтрации остатков по складу"
+    - "Проверить статус склада (active/disabled)"
+  common_mistakes:
+    - >
+      Ожидать увидеть FBO-склады — они принадлежат Ozon и в ответе
+      не присутствуют. Наличие FBO определяется по стокам товаров.
+    - >
+      Вызывать при каждом запросе — данные меняются редко,
+      достаточно кэшировать на 24 часа.
+
+- operation_id: SellerAPI_SellerInfo
+  api: seller
+  title: Бизнес-контекст — базовая информация о кабинете
+  description: >
+    Название компании, тип подписки и статус верификации. subscription.type
+    определяет, какие методы API доступны этому кабинету.
+  severity: info
+  extracted_from: curated
+  business_context: >
+    Возвращает базовую информацию о кабинете продавца:
+    название компании, тип подписки, статус верификации.
+    Ключевое поле — subscription.type (PREMIUM_PRO,
+    PREMIUM_PLUS, PREMIUM, STANDARD, LITE) — определяет
+    какие методы Ozon API доступны этому кабинету.
+  when_to_use:
+    - "Определить тип подписки перед вызовом Premium-методов"
+    - "Проверить статус верификации кабинета"
+    - "Получить название компании для отображения в UI"
+  common_mistakes:
+    - >
+      Не кэшировать результат — подписка меняется редко.
+      Рекомендуется кэшировать с TTL 3600s.

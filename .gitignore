@@ -1,0 +1,45 @@
+# Python bytecode and packaging artefacts
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+*.egg
+dist/
+build/
+wheels/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Test / type / lint caches and reports
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+htmlcov/
+.coverage
+.coverage.*
+coverage.xml
+
+# Secrets and local environment overrides — never commit
+.env
+.env.*
+!.env.example
+*.env
+secrets.yaml
+*_cookies.json
+
+# Transient swagger snapshots produced outside src/ozon_mcp/data/
+# (the bundled copy in src/ozon_mcp/data/swagger_meta.json is committed
+# and required at runtime — the rule below only ignores files at repo
+# root, e.g. parser drop-zones).
+/swagger_meta.json
+
+# OS / editor noise
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*~

@@ -1,0 +1,352 @@
+# Pagination patterns auto-extracted from swagger (38 methods).
+# Used by ozon_fetch_all to walk all pages of a list endpoint.
+#
+# type values:
+#   offset_limit — body.offset += limit each iteration
+#   page_number  — body.page += 1 each iteration
+#   last_id      — body.last_id = response.last_id
+#   cursor       — body.cursor = response.cursor
+#   page_token   — body.next_page_token = response.next_page_token
+
+- operation_id: AnalyticsAPI_AnalyticsGetData
+  type: offset_limit
+  request_offset_field: "offset"
+  request_limit_field: "limit"
+  response_items_field: "result"
+  response_total_field: null
+  default_limit: 1000
+  max_limit: 1000
+
+- operation_id: AnalyticsAPI_AnalyticsGetStockOnWarehousesV2
+  type: offset_limit
+  request_offset_field: "offset"
+  request_limit_field: "limit"
+  response_items_field: "rows"
+  response_total_field: null
+  default_limit: 1000
+  max_limit: 1000
+
+- operation_id: AnalyticsAPI_AnalyticsProductQueries
+  type: page_number
+  request_offset_field: "page"
+  request_limit_field: "page_size"
+  response_items_field: "items"
+  response_total_field: "total"
+  default_limit: 100
+  max_limit: 1000
+
+- operation_id: AnalyticsAPI_ManageStocks
+  type: offset_limit
+  request_offset_field: "offset"
+  request_limit_field: "limit"
+  response_items_field: "items"
+  response_total_field: null
+  default_limit: 1000
+  max_limit: 1000
+
+- operation_id: AnalyticsAPI_StocksTurnover
+  type: offset_limit
+  request_offset_field: "offset"
+  request_limit_field: "limit"
+  response_items_field: "items"
+  response_total_field: null
+  default_limit: 1000
+  max_limit: 1000
+
+- operation_id: AssemblyCarriagePostingList
+  type: cursor
+  request_offset_field: "cursor"
+  request_limit_field: "limit"
+  response_items_field: "products"
+  response_total_field: "cursor"
+  default_limit: 1000
+  max_limit: 1000
+
+- operation_id: AssemblyCarriageProductList
+  type: cursor
+  request_offset_field: "cursor"
+  request_limit_field: "limit"
+  response_items_field: "products"
+  response_total_field: "cursor"
+  default_limit: 1000
+  max_limit: 1000
+
+- operation_id: AssemblyFbsPostingList
+  type: cursor
+  request_offset_field: "cursor"
+  request_limit_field: "limit"
+  response_items_field: "products"
+  response_total_field: "cursor"
+  default_limit: 1000
+  max_limit: 1000
+
+- operation_id: AssemblyFbsProductList
+  type: offset_limit
+  request_offset_field: "offset"
+  request_limit_field: "limit"
+  response_items_field: "products"
+  response_total_field: "has_next"
+  default_limit: 1000
+  max_limit: 1000
+
+- operation_id: BrandAPI_BrandCompanyCertificationList
+  type: page_number
+  request_offset_field: "page"
+  request_limit_field: "page_size"
+  response_items_field: "result"
+  response_total_field: "total"
+  default_limit: 100
+  max_limit: 1000
+
+- operation_id: CancellationAPI_GetConditionalCancellationListV2
+  type: last_id
+  request_offset_field: "last_id"
+  request_limit_field: "limit"
+  response_items_field: "result"
+  response_total_field: "last_id"
+  default_limit: 1000
+  max_limit: 1000
+
+- operation_id: CertificateList
+  type: page_number
+  request_offset_field: "page"
+  request_limit_field: "page_size"
+  response_items_field: "result"
+  response_total_field: "page_count"
+  default_limit: 100
+  max_limit: 1000
+
+- operation_id: CertificateProductsList
+  type: page_number
+  request_offset_field: "page"
+  request_limit_field: "page_size"
+  response_items_field: "items"
+  response_total_field: "count"
+  default_limit: 100
+  max_limit: 1000
+
+- operation_id: FinanceAPI_FinanceCashFlowStatementList
+  type: page_number
+  request_offset_field: "page"
+  request_limit_field: "page_size"
+  response_items_field: "items"
+  response_total_field: "total"
+  default_limit: 100
+  max_limit: 1000
+
+- operation_id: FinanceAPI_FinanceTransactionListV3
+  type: page_number
+  request_offset_field: "page"
+  request_limit_field: "page_size"
+  response_items_field: "items"
+  response_total_field: "row_count"
+  default_limit: 100
+  max_limit: 1000
+
+- operation_id: ListPostingCodes
+  type: offset_limit
+  request_offset_field: "offset"
+  request_limit_field: "limit"
+  response_items_field: "products"
+  response_total_field: null
+  default_limit: 1000
+  max_limit: 1000
+
+- operation_id: PostingAPI_GetFboPostingList
+  type: offset_limit
+  request_offset_field: "offset"
+  request_limit_field: "limit"
+  response_items_field: "products"
+  response_total_field: null
+  default_limit: 1000
+  max_limit: 1000
+
+- operation_id: PostingAPI_GetFbsPostingListV3
+  type: offset_limit
+  request_offset_field: "offset"
+  request_limit_field: "limit"
+  response_items_field: "products"
+  response_total_field: "has_next"
+  default_limit: 1000
+  max_limit: 1000
+
+- operation_id: PostingAPI_GetFbsPostingUnfulfilledList
+  type: offset_limit
+  request_offset_field: "offset"
+  request_limit_field: "limit"
+  response_items_field: "products"
+  response_total_field: "count"
+  default_limit: 1000
+  max_limit: 1000
+
+- operation_id: PostingAPI_UnpaidLegalProductList
+  type: cursor
+  request_offset_field: "cursor"
+  request_limit_field: "limit"
+  response_items_field: "products"
+  response_total_field: "cursor"
+  default_limit: 1000
+  max_limit: 1000
+
+- operation_id: ProductAPI_GetProductAttributesV4
+  type: last_id
+  request_offset_field: "last_id"
+  request_limit_field: "limit"
+  response_items_field: "result"
+  response_total_field: "last_id"
+  default_limit: 1000
+  max_limit: 1000
+
+- operation_id: ProductAPI_GetProductInfoPrices
+  type: cursor
+  request_offset_field: "cursor"
+  request_limit_field: "limit"
+  response_items_field: "items"
+  response_total_field: "cursor"
+  default_limit: 1000
+  max_limit: 1000
+
+- operation_id: ProductAPI_GetProductInfoStocks
+  type: cursor
+  request_offset_field: "cursor"
+  request_limit_field: "limit"
+  response_items_field: "items"
+  response_total_field: "cursor"
+  default_limit: 1000
+  max_limit: 1000
+
+- operation_id: ProductAPI_GetProductInfoStocksByWarehouseFbsV2
+  type: cursor
+  request_offset_field: "cursor"
+  request_limit_field: "limit"
+  response_items_field: "products"
+  response_total_field: "cursor"
+  default_limit: 1000
+  max_limit: 1000
+
+- operation_id: ProductAPI_GetProductList
+  type: last_id
+  request_offset_field: "last_id"
+  request_limit_field: "limit"
+  response_items_field: "items"
+  response_total_field: "last_id"
+  default_limit: 1000
+  max_limit: 1000
+
+- operation_id: ProductAPI_ProductInfoWrongVolume
+  type: cursor
+  request_offset_field: "cursor"
+  request_limit_field: "limit"
+  response_items_field: "products"
+  response_total_field: "cursor"
+  default_limit: 1000
+  max_limit: 1000
+
+- operation_id: ProductAPI_V1ProductCertificationList
+  type: page_number
+  request_offset_field: "page"
+  request_limit_field: "page_size"
+  response_items_field: "result"
+  response_total_field: "total"
+  default_limit: 100
+  max_limit: 1000
+
+- operation_id: PromosCandidates
+  type: last_id
+  request_offset_field: "last_id"
+  request_limit_field: "limit"
+  response_items_field: "products"
+  response_total_field: "last_id"
+  default_limit: 1000
+  max_limit: 1000
+
+- operation_id: PromosProducts
+  type: last_id
+  request_offset_field: "last_id"
+  request_limit_field: "limit"
+  response_items_field: "products"
+  response_total_field: "last_id"
+  default_limit: 1000
+  max_limit: 1000
+
+- operation_id: QuantProductList
+  type: cursor
+  request_offset_field: "cursor"
+  request_limit_field: "limit"
+  response_items_field: "products"
+  response_total_field: "cursor"
+  default_limit: 1000
+  max_limit: 1000
+
+- operation_id: ReportAPI_ReportList
+  type: page_number
+  request_offset_field: "page"
+  request_limit_field: "page_size"
+  response_items_field: "result"
+  response_total_field: "total"
+  default_limit: 100
+  max_limit: 1000
+
+- operation_id: SellerActionsProductsCandidates
+  type: cursor
+  request_offset_field: "cursor"
+  request_limit_field: "limit"
+  response_items_field: "products"
+  response_total_field: "cursor"
+  default_limit: 1000
+  max_limit: 1000
+
+- operation_id: SellerActionsProductsList
+  type: cursor
+  request_offset_field: "cursor"
+  request_limit_field: "limit"
+  response_items_field: "products"
+  response_total_field: "cursor"
+  default_limit: 1000
+  max_limit: 1000
+
+- operation_id: SupplyOrderBundle
+  type: last_id
+  request_offset_field: "last_id"
+  request_limit_field: "limit"
+  response_items_field: "items"
+  response_total_field: "last_id"
+  default_limit: 1000
+  max_limit: 1000
+
+- operation_id: WarehouseAPI_DeliveryMethodList
+  type: offset_limit
+  request_offset_field: "offset"
+  request_limit_field: "limit"
+  response_items_field: "result"
+  response_total_field: "has_next"
+  default_limit: 1000
+  max_limit: 1000
+
+- operation_id: WarehouseAPI_WarehouseList
+  type: offset_limit
+  request_offset_field: "offset"
+  request_limit_field: "limit"
+  response_items_field: "result"
+  response_total_field: null
+  default_limit: 1000
+  max_limit: 1000
+
+- operation_id: WarehouseFbsPickUpHistoryList
+  type: cursor
+  request_offset_field: "cursor"
+  request_limit_field: "limit"
+  response_items_field: "result"
+  response_total_field: "cursor"
+  default_limit: 1000
+  max_limit: 1000
+
+- operation_id: promos_task_list
+  type: page_number
+  request_offset_field: "page"
+  request_limit_field: "limit"
+  response_items_field: "result"
+  response_total_field: null
+  default_limit: 100
+  max_limit: 1000
+

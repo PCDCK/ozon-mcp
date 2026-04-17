@@ -1,0 +1,426 @@
+# Hand-crafted request examples for the most common methods.
+# Each example is a valid request body matching the method's request_schema.
+
+- operation_id: FinanceAPI_FinanceTransactionListV3
+  title: Все транзакции за январь 2026
+  description: Используй ветку filter.date с UTC-датами.
+  request:
+    filter:
+      date:
+        from: "2026-01-01T00:00:00Z"
+        to: "2026-01-31T23:59:59Z"
+      transaction_type: all
+    page: 1
+    page_size: 1000
+
+- operation_id: FinanceAPI_FinanceTransactionListV3
+  title: Транзакции по конкретному отправлению
+  description: Альтернативная ветка filter.posting_number.
+  request:
+    filter:
+      posting_number: "1234-0001-1"
+    page: 1
+    page_size: 100
+
+- operation_id: PostingAPI_GetFbsPostingListV3
+  title: Все FBS-отправления за вчера со статусом awaiting_packaging
+  request:
+    dir: asc
+    filter:
+      since: "2026-04-10T00:00:00Z"
+      to: "2026-04-10T23:59:59Z"
+      status: awaiting_packaging
+    limit: 1000
+    offset: 0
+    with:
+      analytics_data: true
+      financial_data: true
+
+- operation_id: PostingAPI_GetFbsPostingListV3
+  title: Инкрементальный pull по последним изменениям статуса
+  description: |
+    Используется в cron каждые 15 минут — забирает только то, что
+    изменилось после прошлого успешного запуска.
+  request:
+    dir: asc
+    filter:
+      since: "2026-01-01T00:00:00Z"
+      to: "2026-12-31T23:59:59Z"
+      last_changed_status_date:
+        from: "2026-04-11T18:00:00Z"
+        to: "2026-04-11T18:15:00Z"
+    limit: 1000
+    offset: 0
+
+- operation_id: ProductAPI_GetProductList
+  title: Первая страница каталога — все товары
+  request:
+    filter:
+      visibility: ALL
+    last_id: ""
+    limit: 1000
+
+- operation_id: ProductAPI_GetProductList
+  title: Следующая страница каталога
+  description: last_id из ответа предыдущего запроса.
+  request:
+    filter:
+      visibility: ALL
+    last_id: "WyIxNzM2NDgiLDE3MzY0OF0="
+    limit: 1000
+
+- operation_id: ProductAPI_GetProductInfoList
+  title: Детали по 3 товарам по product_id
+  request:
+    product_id:
+      - "223681945"
+      - "223681946"
+      - "223681947"
+
+- operation_id: ProductAPI_GetProductInfoPrices
+  title: Только товары в продаже
+  request:
+    filter:
+      visibility: "IN_SALE"
+    limit: 1000
+
+- operation_id: DescriptionCategoryAPI_GetTree
+  title: Дерево категорий на русском
+  request:
+    language: "RU"
+
+- operation_id: AnalyticsAPI_AnalyticsGetData
+  title: Топ SKU по выручке за неделю
+  request:
+    date_from: "2026-04-04"
+    date_to: "2026-04-11"
+    dimension:
+      - sku
+    metrics:
+      - revenue
+      - ordered_units
+    sort:
+      - key: revenue
+        order: DESC
+    limit: 100
+
+- operation_id: SubmitRequest
+  title: Запрос статистики по двум кампаниям с группировкой по дням
+  description: Performance API асинхронный — ответ вернёт UUID, не данные.
+  request:
+    campaigns:
+      - "12345"
+      - "67890"
+    from: "2026-04-01T00:00:00Z"
+    to: "2026-04-11T23:59:59Z"
+    groupBy: DATE
+
+# --- Phase 3 additions (2026-04-12) ---
+
+- operation_id: SellerAPI_SellerInfo
+  title: Получить информацию о кабинете и текущий тир подписки
+  description: |
+    Read-only метод без параметров, возвращает inn, name, ratings,
+    subscription. Используй subscription.type для определения доступных
+    PREMIUM/PREMIUM_PLUS/PREMIUM_PRO методов.
+  request: {}
+
+- operation_id: AnalyticsAPI_AnalyticsGetData
+  title: Дневная динамика заказов и выручки за месяц (без Premium)
+  request:
+    date_from: "2026-03-12"
+    date_to: "2026-04-11"
+    dimension:
+      - day
+    metrics:
+      - revenue
+      - ordered_units
+    limit: 1000
+    offset: 0
+
+- operation_id: AnalyticsAPI_AnalyticsGetData
+  title: Топ-100 SKU по выручке за неделю (Premium Plus)
+  description: dimension=sku даёт разбивку по товарам. Доступен Premium Plus.
+  request:
+    date_from: "2026-04-04"
+    date_to: "2026-04-11"
+    dimension:
+      - sku
+    metrics:
+      - revenue
+      - ordered_units
+      - hits_view
+    limit: 100
+    offset: 0
+
+- operation_id: WarehouseListV2
+  title: Получить список FBS/rFBS складов кабинета
+  description: |
+    Без параметров, возвращает все склады. Используй WarehouseListV2,
+    не WarehouseAPI_WarehouseList — последний deprecated.
+  request: {}
+
+- operation_id: ProductInfoWarehouseStocks
+  title: Получить остатки по товарам на FBS складах
+  description: |
+    Возвращает остатки только для FBS/rFBS. Для FBO используй
+    ProductAPI_GetProductInfoStocks.
+  request:
+    cursor: ""
+    limit: 1000
+
+- operation_id: ListCampaigns
+  title: Получить активные рекламные кампании (с pageSize чтобы не дампить всё)
+  description: |
+    Performance API. Без pageSize возвращает все 300+ кампаний (~270KB),
+    что съедает контекст агента. Всегда передавай pageSize.
+  request: {}
+  response_excerpt:
+    list:
+      - id: "12345"
+        title: "Promo 04.2026"
+        state: "CAMPAIGN_STATE_RUNNING"
+    total: "1"
+
+- operation_id: GetLimitsList
+  title: Получить лимиты ставок для всех инструментов продвижения
+  description: |
+    Один глобальный вызов, возвращает лимиты для каждого objectType
+    в кабинете. Используй для валидации новых ставок перед PATCH.
+  request: {}
+
+- operation_id: ListReports
+  title: Получить список отчётов сгенерированных через UI Performance
+  description: |
+    Возвращает только отчёты сделанные через интерфейс Ozon, НЕ через API.
+    Для аудита API-отчётов держи свой реестр UUID на стороне клиента.
+  request: {}
+
+- operation_id: RFBSReturnsAPI_ReturnsRfbsListV2
+  title: Получить список rFBS возвратов
+  description: |
+    При отсутствии возвратов поле returns приходит как пустой массив `[]`,
+    обрабатывай это как отдельный case.
+  request:
+    filter: {}
+    limit: 1000
+    offset: 0
+
+- operation_id: returnsList
+  title: Общий список возвратов (FBO + FBS)
+  description: |
+    Альтернативный метод когда нужны возвраты обеих схем.
+    compensation_status часто null — defensive parsing.
+  request:
+    filter: {}
+    limit: 1000
+    last_id: 0
+
+# --- Phase 3 additions (2026-04-17): examples for the seven hottest methods ---
+
+- operation_id: ProductAPI_GetProductList
+  title: Первые 100 активных товаров кабинета
+  description: |
+    Минимальный полезный запрос — для UI / превью каталога. Используй
+    last_id из ответа как offset следующей страницы, или сразу
+    ozon_fetch_all для автопагинации по всему каталогу.
+  request:
+    filter:
+      visibility: ALL
+    last_id: ""
+    limit: 100
+  response_excerpt:
+    result:
+      items:
+        - product_id: 99000001
+          offer_id: TEST-SKU-001
+          archived: false
+          has_fbo_stocks: true
+          has_fbs_stocks: false
+        - product_id: 99000002
+          offer_id: TEST-SKU-002
+          archived: false
+          has_fbo_stocks: true
+          has_fbs_stocks: true
+      last_id: WyI5OTAwMDAwMiJd
+      total: 2
+
+- operation_id: ProductAPI_GetProductInfoList
+  title: Детали по партии product_id (батч до 1000)
+  description: |
+    Передавай только одну группу идентификаторов (product_id ИЛИ offer_id
+    ИЛИ sku) — Ozon вернёт 400 на смешанный запрос. Для полного снапшота
+    каталога используй ozon_fetch_all.
+  request:
+    product_id:
+      - "99000001"
+      - "99000002"
+      - "99000003"
+  response_excerpt:
+    items:
+      - id: 99000001
+        name: "Test product 1"
+        offer_id: TEST-SKU-001
+        currency_code: RUB
+        price: "399.0000"
+        old_price: "599.0000"
+        statuses:
+          status: price_sent
+          moderate_status: approved
+        stocks:
+          has_stock: true
+          stocks:
+            - present: 12
+              reserved: 1
+              type: fbo
+
+- operation_id: ProductAPI_GetProductInfoPrices
+  title: Все товары с ценами, индексами и комиссиями
+  description: |
+    Самый информативный метод по ценам — отдаёт price_indexes (числовой
+    price_index_value, color_index), commissions, marketing_actions
+    (активные акции). Для pricing_analysis workflow.
+  request:
+    filter:
+      visibility: "ALL"
+    cursor: ""
+    limit: 1000
+  response_excerpt:
+    items:
+      - product_id: 99000001
+        offer_id: TEST-SKU-001
+        price:
+          currency_code: RUB
+          price: "399.0000"
+          marketing_seller_price: "399.0000"
+          min_price: "299.0000"
+        price_indexes:
+          color_index: WITHOUT_INDEX
+          ozon_index_data:
+            minimal_price: "395.0000"
+            price_index_value: 1.01
+        commissions:
+          sales_percent_fbo: 0.13
+          sales_percent_fbs: 0.13
+
+- operation_id: AnalyticsAPI_StocksTurnover
+  title: Скорость продаж и запас по дням для всех SKU
+  description: |
+    Главная метрика для планирования закупок. ads = average daily sales,
+    idc = inventory days cover (дни до нуля при текущей скорости).
+    turnover_grade ∈ {DEFICIT, OPTIMAL, EXCESS, NO_SALES}. Лимит — 1
+    запрос в минуту на кабинет (подтверждено live 2026-04-17).
+  request:
+    sku:
+      - 99000001
+      - 99000002
+      - 99000003
+    limit: 1000
+    offset: 0
+  response_excerpt:
+    items:
+      - sku: 99000001
+        offer_id: TEST-SKU-001
+        current_stock: 12
+        ads: 1.5
+        idc: 8.0
+        turnover_grade: DEFICIT
+        turnover_grade_cluster: DEFICIT_GROWING
+      - sku: 99000002
+        offer_id: TEST-SKU-002
+        current_stock: 25
+        ads: 0.8
+        idc: 31.25
+        turnover_grade: OPTIMAL
+        turnover_grade_cluster: OPTIMAL_FALLING
+
+- operation_id: RatingAPI_RatingSummaryV1
+  title: Полная сводка рейтингов кабинета
+  description: |
+    Read-only метод без параметров. status=CRITICAL хотя бы по одной
+    группе означает что Ozon снижает видимость товаров. Используй в
+    cabinet_health_check workflow раз в час.
+  request: {}
+  response_excerpt:
+    groups:
+      - group_name: "Выполнение заказов"
+        items:
+          - rating: rating_on_time
+            name: "Процент заказов вовремя"
+            current_value: 97.5
+            status: OK
+            value_type: PERCENT
+            rating_direction: HIGHER_IS_BETTER
+          - rating: rating_review_avg_score
+            name: "Средняя оценка"
+            current_value: 4.7
+            status: OK
+            value_type: RATING
+    premium_scores:
+      - rating: rating_on_time
+        value: 97.5
+        penalty_score_per_day: 0
+        scope: premium_plus
+
+- operation_id: ProductAPI_GetProductRatingBySku
+  title: Контент-рейтинг карточек + список атрибутов для улучшения
+  description: |
+    Контент-рейтинг 0-100 на каждый sku и improve_attributes —
+    конкретные характеристики которые повышают рейтинг. Каждые +10
+    к рейтингу заметно улучшают позиции в поиске.
+  request:
+    skus:
+      - 99000001
+      - 99000002
+  response_excerpt:
+    products:
+      - sku: 99000001
+        rating: 85
+        groups:
+          - key: media
+            rating: 100
+          - key: characteristics
+            rating: 75
+            improve_attributes:
+              - id: 4191
+                name: "Цвет"
+              - id: 8292
+                name: "Материал"
+            improve_at_least: 4
+
+- operation_id: PostingAPI_GetFboPostingList
+  title: FBO-заказы за последние 7 дней
+  description: |
+    Стандартный запрос для дашборда заказов. Включай with.analytics_data
+    и with.financial_data чтобы получить выручку и комиссии в одном
+    round-trip. since/to обязательные UTC date-time.
+  request:
+    dir: asc
+    filter:
+      since: "2026-04-10T00:00:00Z"
+      to: "2026-04-17T23:59:59Z"
+      status: ""
+    limit: 1000
+    offset: 0
+    with:
+      analytics_data: true
+      financial_data: true
+  response_excerpt:
+    result:
+      - posting_number: "1234-0001-1"
+        order_id: 99000001
+        status: delivered
+        in_process_at: "2026-04-15T08:00:00Z"
+        products:
+          - sku: 99000001
+            quantity: 1
+            price: "399.0000"
+        analytics_data:
+          warehouse_name: "Test FBO warehouse"
+          city: "Test City"
+        financial_data:
+          posting_services:
+            marketplace_service_item_fulfillment: 12.5
+            marketplace_service_item_dropoff_pvz: 0
+            marketplace_service_item_delivery_to_customer: 80
+

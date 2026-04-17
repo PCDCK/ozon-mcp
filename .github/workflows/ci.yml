@@ -1,0 +1,97 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.12", "3.13"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          version: "latest"
+          enable-cache: true
+
+      - name: Set up Python
+        run: uv python install ${{ matrix.python-version }}
+
+      - name: Install dependencies
+        run: uv sync --extra dev
+
+      - name: Run ruff
+        run: uv run ruff check src tests
+
+      - name: Run mypy
+        run: uv run mypy src/ozon_mcp
+
+      - name: Run pytest with coverage
+        run: |
+          uv run pytest tests/ \
+            --ignore=tests/live \
+            -v --tb=short \
+            --cov=src/ozon_mcp \
+            --cov-report=term-missing \
+            --cov-report=xml:coverage.xml
+
+      - name: Upload coverage report
+        if: matrix.python-version == '3.12'
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: coverage.xml
+
+  swagger-drift:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check swagger meta age
+        continue-on-error: true
+        run: |
+          python - <<'EOF'
+          import json
+          import sys
+          from datetime import datetime, timedelta, timezone
+
+          meta_path = "src/ozon_mcp/data/swagger_meta.json"
+          with open(meta_path) as f:
+              meta = json.load(f)
+
+          now = datetime.now(timezone.utc)
+          stale = []
+          for api in ("seller", "performance"):
+              raw = meta.get(api, {}).get("refreshed_at")
+              if not raw:
+                  print(f"WARNING: {api} swagger has no refreshed_at field")
+                  stale.append(api)
+                  continue
+              # Tolerate both "2026-04-17" and "2026-04-17T00:22:00+00:00" forms.
+              try:
+                  refreshed = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+              except ValueError:
+                  print(f"WARNING: {api} refreshed_at unparseable ({raw!r})")
+                  stale.append(api)
+                  continue
+              if refreshed.tzinfo is None:
+                  refreshed = refreshed.replace(tzinfo=timezone.utc)
+              age = now - refreshed
+              if age > timedelta(days=14):
+                  print(f"WARNING: {api} swagger is {age.days} days old")
+                  stale.append(api)
+              else:
+                  print(f"OK: {api} swagger is {age.days} days old")
+
+          if stale:
+              sys.exit(1)
+          print("Swagger specs are up to date")
+          EOF

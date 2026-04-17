@@ -1,0 +1,35 @@
+{
+  "result": {
+    "items": [
+      {
+        "product_id": 99000001,
+        "offer_id": "TEST-SKU-001",
+        "has_fbo_stocks": true,
+        "has_fbs_stocks": false,
+        "archived": false,
+        "is_discounted": false,
+        "quants": []
+      },
+      {
+        "product_id": 99000002,
+        "offer_id": "TEST-SKU-002",
+        "has_fbo_stocks": true,
+        "has_fbs_stocks": true,
+        "archived": false,
+        "is_discounted": false,
+        "quants": []
+      },
+      {
+        "product_id": 99000003,
+        "offer_id": "TEST-SKU-003",
+        "has_fbo_stocks": false,
+        "has_fbs_stocks": false,
+        "archived": true,
+        "is_discounted": false,
+        "quants": []
+      }
+    ],
+    "total": 3,
+    "last_id": "WyI5OTAwMDAwMyJd"
+  }
+}

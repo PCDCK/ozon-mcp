@@ -1,0 +1,22 @@
+{
+  "result": [
+    {
+      "warehouse_id": 99100001,
+      "name": "Test FBS warehouse Moscow",
+      "is_rfbs": false,
+      "is_able_to_set_price": true,
+      "has_postings_limit": false,
+      "has_entrusted_acceptance": false,
+      "is_economy": false,
+      "is_kgt": false,
+      "first_mile_type": {"first_mile_is_changing": false, "first_mile_type": "DropOff"},
+      "status": "created",
+      "working_days": ["1", "2", "3", "4", "5"],
+      "min_postings_limit": 0,
+      "postings_limit": -1,
+      "min_working_days": 5,
+      "is_karantin": false,
+      "can_print_act_in_advance": true
+    }
+  ]
+}

@@ -1,0 +1,559 @@
+# Curated workflows for chaining Ozon API methods into real data pipelines.
+# All entries here are review_status: draft until field-tested in production.
+# Verified workflows should be marked review_status: verified after dogfooding.
+
+- name: sync_orders_fbs
+  category: orders
+  title: Инкрементальная синхронизация FBS/rFBS-заказов в свою БД
+  description: |
+    Загружает FBS-отправления за период, обогащает их деталями, и кладёт в
+    локальную таблицу. Используй когда продавец работает по схеме FBS (Fulfillment
+    by Seller — отправление со своего склада) или rFBS. Поддерживает инкремент по
+    last_changed_status_date — на втором проходе подтягивает только изменившиеся
+    отправления, поэтому подходит для cron каждые 15 минут. Для продавцов на FBO
+    есть отдельный workflow sync_orders_fbo. Многие продавцы работают по обеим
+    схемам параллельно — тогда запускай оба workflow независимо.
+  recommended_schedule: every 15 minutes
+  recommended_db_schema:
+    table: ozon_orders_fbs
+    primary_key: [tenant_id, posting_number]
+    indexes:
+      - [tenant_id, in_process_at]
+      - [tenant_id, status, in_process_at]
+      - [tenant_id, last_changed_status_date]
+    engine_clickhouse: ReplacingMergeTree(updated_at) PARTITION BY toYYYYMM(in_process_at) ORDER BY (tenant_id, posting_number)
+    engine_postgres: PARTITION BY RANGE (in_process_at)
+  steps:
+    - n: 1
+      operation_id: PostingAPI_GetFbsPostingListV3
+      purpose: Получить список FBS posting_number за окно времени
+      pagination: offset/limit, limit ≤ 1000, останавливаться когда result.has_next == false (но проверяй и result.postings != [])
+      notes: |
+        В первом проходе используй filter.since/filter.to за весь нужный период.
+        В инкрементальных — filter.last_changed_status_date с курсором последнего
+        успешного запуска. FBS позволяет фильтровать по delivery_method_id,
+        provider_id, warehouse_id, status — это не доступно во FBO-варианте.
+    - n: 2
+      operation_id: PostingAPI_GetFbsPostingV3
+      purpose: Получить детальную информацию по каждому отправлению
+      batching: один запрос на posting_number, не батчится
+      concurrency: до 30 параллельных запросов на старте, наблюдай за 429
+      notes: |
+        Включай with.financial_data=true для получения комиссий и выплат сразу,
+        иначе придётся идти в /v3/finance/transaction/list отдельно. Для
+        FBS-rFBS специально может быть полезно with.barcodes и with.legal_info.
+  gotchas:
+    - status может измениться задним числом — храни как версионируемое поле (ReplacingMergeTree)
+    - period в filter.since/to не больше 1 года за один запрос
+    - has_next=true не гарантирует что в следующем offset будут данные — останавливайся также когда result.postings пуст
+    - FBS и FBO — разные методы с разными filter-схемами, не путай /fbs/list и /fbo/list
+    - in_process_at — UTC, конвертируй при отображении пользователю
+  review_status: draft  # FBS-схема не валидирована live (наш тестовый аккаунт работает по FBO)
+
+- name: sync_orders_fbo
+  category: orders
+  title: Инкрементальная синхронизация FBO-заказов в свою БД
+  description: |
+    Загружает FBO-отправления за период, обогащает их деталями (товары, аналитика,
+    финансы), и кладёт в локальную таблицу. Используй когда продавец работает по
+    схеме FBO (Fulfillment by Ozon — товар на складе Ozon). Если продавец на FBS —
+    запускай sync_orders_fbs параллельно. Многие продавцы работают по обеим
+    схемам, тогда оба workflow можно держать в одной cron-схеме.
+  recommended_schedule: every 15 minutes
+  recommended_db_schema:
+    table: ozon_orders_fbo
+    primary_key: [tenant_id, posting_number]
+    indexes:
+      - [tenant_id, in_process_at]
+      - [tenant_id, status, in_process_at]
+    engine_clickhouse: ReplacingMergeTree(updated_at) PARTITION BY toYYYYMM(in_process_at) ORDER BY (tenant_id, posting_number)
+    engine_postgres: PARTITION BY RANGE (in_process_at)
+  steps:
+    - n: 1
+      operation_id: PostingAPI_GetFboPostingList
+      purpose: Получить список FBO-отправлений за окно времени
+      pagination: offset/limit, limit ≤ 1000, max offset = 20000
+      notes: |
+        Filter требует since/to (UTC date-time). Для большего окна — итерируй
+        чанками, поскольку offset ограничен 20000. Опциональный filter.status
+        фильтрует по статусу (awaiting_packaging, awaiting_deliver, delivering,
+        delivered, cancelled).
+    - n: 2
+      operation_id: PostingAPI_GetFboPosting
+      purpose: Получить детальную информацию по каждому отправлению
+      batching: один запрос на posting_number, не батчится
+      concurrency: до 30 параллельных запросов на старте, наблюдай за 429
+      notes: |
+        Включай with.analytics_data=true и with.financial_data=true в основном
+        методе /v2/posting/fbo/list — это вернёт детали в одном запросе и сэкономит
+        round-trips. Отдельный /v2/posting/fbo/get нужен только для свежих
+        обновлений по конкретному отправлению.
+  gotchas:
+    - filter.since и filter.to оба обязательны, оба UTC date-time
+    - offset в /v2/posting/fbo/list ограничен 20000 — для широких окон итерируй по периодам
+    - in_process_at — UTC, конвертируй при отображении пользователю
+    - У FBO и FBS схемы фильтра разные. Не путай /v2/posting/fbo/list и /v3/posting/fbs/list
+    - Включай with.analytics_data + with.financial_data сразу, чтобы избежать второго прохода
+  review_status: verified  # подтверждено live smoke test 2026-04-11 на реальном PREMIUM_PLUS аккаунте
+
+- name: sync_products_catalog
+  category: catalog
+  title: Полный снапшот каталога товаров с атрибутами
+  description: |
+    Загружает все товары продавца, обогащает атрибутами и остатками. Запускается
+    реже чем заказы (каталог меняется медленно), но требует двух API-вызовов
+    на каждый товар, поэтому делай батчами по 1000.
+  recommended_schedule: every 6 hours
+  recommended_db_schema:
+    table: ozon_products
+    primary_key: [tenant_id, product_id]
+    indexes:
+      - [tenant_id, offer_id]
+      - [tenant_id, sku]
+      - [tenant_id, visibility]
+    engine_clickhouse: ReplacingMergeTree(updated_at) ORDER BY (tenant_id, product_id)
+  steps:
+    - n: 1
+      operation_id: ProductAPI_GetProductList
+      purpose: Получить плоский список product_id + offer_id с курсорной пагинацией
+      pagination: cursor (last_id), limit=1000, продолжать пока result.items не пуст
+      notes: |
+        В первом запросе last_id="", в последующих передавай last_id из ответа.
+    - n: 2
+      operation_id: ProductAPI_GetProductInfoList
+      purpose: Подтянуть детали (название, фото, статусы, ошибки, базовые цены)
+      batching: до 1000 product_id в одном запросе
+      join_on: product_id из шага 1
+    - n: 3
+      operation_id: ProductAPI_GetProductInfoPrices
+      purpose: Детальные цены, комиссии, price_indexes (числовой), marketing_seller_price
+      pagination: cursor, limit=1000, visibility=ALL
+      notes: |
+        price_indexes здесь полнее чем в info/list — содержит price_index_value (float).
+        marketing_seller_price — реальная цена покупателя (с учётом акций).
+        net_price — себестоимость (вручную указанная продавцом).
+        commissions.sales_percent_fbo/fbs — процент комиссии Ozon.
+    - n: 4
+      operation_id: DescriptionCategoryAPI_GetTree
+      purpose: Маппинг description_category_id → category_name
+      notes: |
+        Дерево рекурсивное, нужно flatten в dict {id: name}.
+        Вызывается один раз за sync (категории меняются редко).
+  gotchas:
+    - максимум 1000 товаров в одном /v3/product/info/list
+    - filter.visibility может урезать выдачу — для полного снапшота используй ALL
+    - SKU может быть null для товаров на модерации
+    - stocks.present включает reserved — доступный остаток = present - reserved
+    - price_indexes.color_index в info/list может быть WITHOUT_INDEX, а в info/prices — SUPER
+  review_status: verified
+
+- name: sync_finance_transactions
+  category: finance
+  title: Загрузка финансовых транзакций для расчёта юнит-экономики
+  description: |
+    Транзакции — это атомарный источник правды для расчёта маржи и комиссий
+    Ozon. Грузить надо помесячно (API ограничивает период), пагинировать по
+    page/page_size, и использовать filter.transaction_type=all для полного покрытия.
+  recommended_schedule: daily at 04:00
+  recommended_db_schema:
+    table: ozon_finance_transactions
+    primary_key: [tenant_id, operation_id]
+    indexes:
+      - [tenant_id, operation_date]
+      - [tenant_id, posting_number]
+      - [tenant_id, operation_type]
+    engine_clickhouse: ReplacingMergeTree(loaded_at) PARTITION BY toYYYYMM(operation_date) ORDER BY (tenant_id, operation_id)
+  steps:
+    - n: 1
+      operation_id: FinanceAPI_FinanceTransactionListV3
+      purpose: Получить транзакции за месяц
+      pagination: page/page_size, page_size=1000, идти до result.page_count
+      notes: |
+        Один запрос = один календарный месяц, не больше. Для исторической
+        загрузки итерируй по месяцам в Celery worker'е. Используй filter.date,
+        не filter.posting_number — последний для точечных запросов.
+  gotchas:
+    - максимальный период — 1 месяц за запрос
+    - filter.date и filter.posting_number — взаимоисключающие по oneOf
+    - суммы возвращаются в копейках, не рублях — конвертируй при сохранении
+    - данные могут отличаться от личного кабинета из-за задержки агрегации (до 24h)
+  review_status: draft
+
+# --- New workflows added in Phase 3 (2026-04-12) — verified live in Phase 2 ---
+
+- name: sync_analytics_daily
+  category: analytics
+  title: Дневная аналитика по продажам, выручке и заказам
+  description: |
+    Загружает daily-time-series аналитику по основным метрикам (revenue,
+    ordered_units, hits_view) и сохраняет в локальную таблицу для построения
+    BI-дашбордов. Для PREMIUM_PLUS аккаунтов доступны расширенные метрики
+    (показы, сессии, конверсии). Для не-Premium — только базовые две.
+  recommended_schedule: daily at 04:00
+  recommended_db_schema:
+    table: ozon_analytics_daily
+    primary_key: [tenant_id, date, dimension_value]
+    indexes:
+      - [tenant_id, date]
+      - [tenant_id, dimension_value]
+    engine_clickhouse: ReplacingMergeTree(loaded_at) PARTITION BY toYYYYMM(date) ORDER BY (tenant_id, date, dimension_value)
+  steps:
+    - n: 1
+      operation_id: AnalyticsAPI_AnalyticsGetData
+      purpose: Получить time series по дням за нужный период
+      pagination: limit/offset, max limit=1000
+      notes: |
+        dimension=["day"] для time series. metrics=["revenue","ordered_units"]
+        как минимум — эти доступны всем. Для Premium Plus добавь
+        ["hits_view","session_view","conv_tocart"]. date_from / date_to в
+        формате YYYY-MM-DD (не date-time!). Глубина без Premium — 90 дней.
+  gotchas:
+    - Без Premium Plus глубина ограничена 3 месяцами
+    - Без Premium Plus доступны только revenue и ordered_units
+    - Не больше 14 metrics за один запрос (иначе InvalidArgument)
+    - dimension и metrics в swagger — array of string без enum, но valid
+      values перечислены в description (теперь автоэкстрактнуты в enum поля)
+  review_status: verified  # подтверждено Phase 2 audit на PREMIUM_PLUS аккаунте
+
+- name: sync_advertising_campaigns
+  category: advertising
+  title: Загрузка списка рекламных кампаний с деталями
+  description: |
+    Performance API workflow — забирает список всех кампаний кабинета и
+    детали по каждой (статус, бюджет, тип, продукты в кампании). Подходит
+    для модуля управления рекламой и расчёта ROI.
+
+    ВАЖНО: GET /api/client/campaign без pageSize возвращает ВСЕ кампании
+    одним массивом, что может быть очень большим (370+ кампаний = ~270 KB
+    на нашем тестовом аккаунте). Всегда передавай pageSize=20-50.
+  recommended_schedule: every 1 hour
+  recommended_db_schema:
+    table: ozon_advertising_campaigns
+    primary_key: [tenant_id, campaign_id]
+    indexes:
+      - [tenant_id, state]
+      - [tenant_id, advObjectType]
+    engine_clickhouse: ReplacingMergeTree(updated_at) ORDER BY (tenant_id, campaign_id)
+  steps:
+    - n: 1
+      operation_id: ListCampaigns
+      purpose: Получить страницу кампаний
+      pagination: page/pageSize query params, pageSize ≤ 50 рекомендуется
+      notes: |
+        Опциональные query параметры — state (CAMPAIGN_STATE_RUNNING,
+        CAMPAIGN_STATE_INACTIVE, ...) для фильтрации, advObjectType для типа
+        (SKU/BANNER/...). Без фильтров возвращает все кампании.
+    - n: 2
+      operation_id: GetLimitsList
+      purpose: Получить лимиты ставок для всех инструментов продвижения
+      notes: |
+        Один глобальный вызов, не per-campaign. Возвращает лимиты для каждого
+        objectType в кабинете. Полезно для валидации новых ставок перед PATCH.
+  gotchas:
+    - Без pageSize ответ может быть >250 KB — для агента это потеря контекста
+    - placement в ответе иногда возвращается как `[]` вместо строки
+    - GetLimitsList может содержать objectType=BRAND_SHELF которого нет в swagger enum
+    - Не путай с Submit*Statistics — те создают async отчёты и тратят квоту
+  review_status: verified  # Phase 2 audit, 2026-04-12
+
+- name: sync_warehouse_stocks
+  category: warehouse
+  title: Синхронизация остатков на складах FBS/rFBS
+  description: |
+    Загружает текущие остатки товаров на каждом складе FBS/rFBS. Важно для
+    real-time-обновления остатков в локальной БД и реакции на out-of-stock.
+    Не используется для FBO — там остатки управляются Ozon.
+  recommended_schedule: every 30 minutes
+  recommended_db_schema:
+    table: ozon_warehouse_stocks
+    primary_key: [tenant_id, warehouse_id, sku]
+    indexes:
+      - [tenant_id, warehouse_id]
+      - [tenant_id, sku]
+    engine_clickhouse: ReplacingMergeTree(updated_at) ORDER BY (tenant_id, warehouse_id, sku)
+  steps:
+    - n: 1
+      operation_id: WarehouseListV2
+      purpose: Получить список FBS/rFBS складов кабинета
+      notes: |
+        ВАЖНО: WarehouseAPI_WarehouseList (без V2) deprecated и отключается
+        7 апреля 2026. Используй WarehouseListV2.
+        warehouses[].pause_at иногда null — обрабатывай как nullable.
+    - n: 2
+      operation_id: ProductInfoWarehouseStocks
+      purpose: Получить остатки по каждому товару на каждом складе
+      pagination: cursor (last_id), limit ≤ 1000
+      notes: |
+        Возвращает информацию по остаткам на FBS и rFBS складах. Для FBO
+        используй ProductAPI_GetProductInfoStocks.
+  gotchas:
+    - WarehouseList (без V2) deprecated, не используй
+    - pause_at в WarehouseListV2 может быть null
+    - Не путай FBS-остатки и FBO-остатки — разные методы и разные структуры
+  review_status: verified
+
+- name: sync_returns_rfbs
+  category: returns
+  title: Синхронизация возвратов rFBS
+  description: |
+    Загружает возвраты по схеме rFBS (returns from buyer through seller's
+    own logistics). Для FBO используй отдельный поток через realisation.
+  recommended_schedule: every 1 hour
+  recommended_db_schema:
+    table: ozon_returns_rfbs
+    primary_key: [tenant_id, return_id]
+    indexes:
+      - [tenant_id, posting_number]
+      - [tenant_id, status, created_at]
+    engine_clickhouse: ReplacingMergeTree(updated_at) ORDER BY (tenant_id, return_id)
+  steps:
+    - n: 1
+      operation_id: RFBSReturnsAPI_ReturnsRfbsListV2
+      purpose: Получить список rFBS-возвратов
+      pagination: limit/offset
+      notes: |
+        ВАЖНО: когда возвратов нет, поле returns в ответе приходит как `[]`,
+        а не как отсутствие поля. Парсер должен это обрабатывать.
+    - n: 2
+      operation_id: returnsList
+      purpose: Альтернативный метод для общего списка возвратов FBO+FBS
+      notes: |
+        compensation_status в каждой записи может быть null — обработай.
+        Использовать вместо RfbsListV2 если нужны оба типа возвратов.
+  gotchas:
+    - "RfbsListV2: returns может быть `[]` вместо object при отсутствии данных"
+    - "returnsList: compensation_status часто null"
+    - "Возвраты могут приходить с задержкой 24-48 часов после события"
+  review_status: draft  # схема валидна live, но количество возвратов в тестовом аккаунте было 0
+
+# --- Phase 3 additions (2026-04-17): analytical workflows ---
+#
+# These are *analysis* recipes, not background sync pipelines — they answer
+# specific business questions ("what's about to OOS?", "is my pricing
+# competitive?") using existing data plus targeted Ozon calls.
+
+- name: oos_risk_analysis
+  category: analytics
+  title: Найти товары под угрозой out-of-stock
+  description: |
+    Выявляет товары которые скоро закончатся, по показателю idc (Inventory
+    Days Coverage). Критично для планирования закупок FBO. Один вызов
+    AnalyticsAPI_StocksTurnover возвращает все товары со скоростью продаж,
+    стоком и категорией риска. Доступно на всех тарифах.
+  recommended_schedule: every 1 hour
+  steps:
+    - n: 1
+      operation_id: AnalyticsAPI_StocksTurnover
+      purpose: Получить idc и turnover_grade для всех SKU кабинета
+      pagination: offset/limit, limit ≤ 1000
+      notes: |
+        Вызывать не чаще 1 раза в минуту (rate limit 1 req/min, подтверждено
+        live 2026-04-17). Используй ozon_call_method, не ozon_fetch_all
+        в цикле без пауз — поймаешь 429.
+    - n: 2
+      operation_id: AnalyticsAPI_AnalyticsStocks
+      purpose: |
+        (Опционально) разбивка по складам для критичных SKU из шага 1.
+        Помогает понять — дефицит на одном складе или равномерный.
+      pagination: offset/limit
+      join_on: sku из шага 1 где turnover_grade=DEFICIT
+      notes: |
+        Premium-метод. На non-Premium кабинетах пропускай этот шаг —
+        дефицит виден из шага 1, просто без разбивки по складам.
+  rate_limit_note: |
+    Шаг 1: 1 req/min на уровне кабинета — семафор автоматически
+    сериализует параллельные вызовы (см. SLOW_ENDPOINT_MIN_DELAY).
+    Шаг 2: 30-60/min для Premium тарифов.
+  subscription_note: |
+    Шаг 1 — на всех тарифах. Шаг 2 — Premium и выше (на Lite/Standard
+    можно пропустить).
+  interpret: |
+    Фильтруй: turnover_grade in ["DEFICIT","NO_SALES"] OR idc < 14.
+    Сортировка по idc asc — самые критичные первыми.
+    DEFICIT_GROWING — продажи растут, остатка не хватит.
+    NO_SALES — нет продаж за период (не путать с OOS).
+  when_to_use:
+    - Ежедневный мониторинг OOS-рисков
+    - Планирование поставок FBO
+    - Выявление позиций требующих допоставки
+  common_mistakes:
+    - Вызывать в цикле без задержки — гарантированный 429
+    - Считать что turnover_grade=CRITICAL всегда означает дефицит — бывает и оверсток (idc > 120)
+  gotchas:
+    - rate limit 1 req/min на кабинет
+  review_status: verified
+
+- name: cabinet_health_check
+  category: health
+  title: Полная диагностика здоровья кабинета
+  description: |
+    Снимает три ключевых индикатора здоровья кабинета за один сеанс:
+    рейтинги Ozon (RatingSummary), базовая информация о подписке
+    (SellerInfo), скорость доставки (AverageDeliveryTimeSummary). Вместе
+    дают мгновенную картину того, не угрожает ли кабинету понижение
+    видимости или блокировка.
+  recommended_schedule: every 6 hours
+  steps:
+    - n: 1
+      operation_id: RatingAPI_RatingSummaryV1
+      purpose: Рейтинги Ozon — Price Index, On-Time, Cancel Rate, Review Score
+      notes: status=CRITICAL по любой группе требует немедленной реакции.
+    - n: 2
+      operation_id: SellerAPI_SellerInfo
+      purpose: Базовая информация о кабинете и тариф подписки
+      notes: |
+        subscription.type определяет какие методы доступны
+        (см. ozon_list_methods_for_subscription).
+    - n: 3
+      operation_id: AverageDeliveryTimeSummary
+      purpose: Среднее время доставки и lost_profit
+      notes: lost_profit > 0 — кабинет теряет деньги из-за медленной доставки.
+  interpret: |
+    Объединить три ответа в health_report:
+    - status=CRITICAL в ratings → срочно требует внимания
+    - lost_profit > 0 → потери из-за медленной доставки
+    - subscription.type — фиксируй для контекста выводов
+  when_to_use:
+    - Ежедневный мониторинг статуса кабинета
+    - Диагностика падения продаж
+    - Регулярные отчёты владельцу
+  common_mistakes:
+    - Игнорировать WARNING статусы — они быстро становятся CRITICAL
+    - Запускать без сохранения истории — тренд важнее снимка
+  rate_limit_note: |
+    Все три метода — read, без жёстких лимитов. Можно дёргать раз в час
+    без проблем.
+  subscription_note: |
+    SellerInfo и RatingSummary — на всех тарифах. AverageDeliveryTimeSummary
+    может требовать PREMIUM на части кабинетов.
+  gotchas:
+    - status=OK не означает идеально — смотри current_value vs threshold
+    - AverageDeliveryTimeSummary возвращает массив — агрегируй по cluster_id
+  review_status: draft
+
+- name: content_audit
+  category: content
+  title: Аудит качества контента карточек
+  description: |
+    Находит товары с низким контент-рейтингом и возвращает конкретные
+    атрибуты которые надо заполнить чтобы рейтинг вырос. Контент-рейтинг
+    напрямую влияет на ранжирование в поиске Ozon.
+  recommended_schedule: weekly
+  steps:
+    - n: 1
+      operation_id: ProductAPI_GetProductList
+      purpose: Получить полный список SKU кабинета
+      pagination: cursor (last_id), limit=1000
+      notes: filter.visibility=ALL чтобы захватить и архивные товары тоже.
+    - n: 2
+      operation_id: ProductAPI_GetProductRatingBySku
+      purpose: Контент-рейтинг 0-100 + improve_attributes на каждый товар
+      batching: до 100 sku в одном запросе
+      join_on: sku из шага 1
+      notes: |
+        improve_attributes содержит конкретные id+name атрибутов. По каждому
+        атрибуту указано на сколько баллов вырастет рейтинг при заполнении.
+  interpret: |
+    Сортируй по rating asc. Группируй improve_attributes — частые
+    отсутствующие атрибуты подскажут где провал в шаблоне импорта.
+    rating < 40 — карточка почти не показывается.
+    rating 40-70 — посредственно, есть простор.
+    rating > 90 — отлично, не трогай.
+  when_to_use:
+    - Аудит контента нового ассортимента после массового импорта
+    - Диагностика низких продаж при достаточном остатке
+    - Регулярный (раз в неделю) анализ для контент-менеджеров
+  common_mistakes:
+    - Ждать мгновенного эффекта — рейтинг пересчитывается раз в сутки
+    - Заполнять только image-атрибуты — они дают меньше баллов чем характеристики
+  rate_limit_note: |
+    ProductRatingBySku — стандартный лимит 1000/min, можно батчить.
+  subscription_note: На всех тарифах.
+  gotchas:
+    - improve_attributes для архивных товаров может быть пустым
+    - sku может быть null для товаров на модерации — фильтруй перед запросом
+  review_status: draft
+
+- name: pricing_analysis
+  category: pricing
+  title: Анализ ценообразования и индексов цен
+  description: |
+    Один вызов ProductInfoPrices даёт по каждому товару цену, минимальную
+    цену, marketing_seller_price, индексы цены (vs Ozon, vs внешний рынок,
+    vs собственные другие товары) и текущие маркетинговые акции. Помогает
+    выявить товары с невыгодным позиционированием по цене.
+  recommended_schedule: daily
+  steps:
+    - n: 1
+      operation_id: ProductAPI_GetProductInfoPrices
+      purpose: Цены + price_indexes + commissions + marketing_actions
+      pagination: cursor, limit=1000
+      notes: |
+        price_indexes.color_index ∈ {SUPER, GOOD, AVERAGE, WITHOUT_INDEX,
+        RED, YELLOW}. RED и YELLOW — цена выше рынка, ранжирование падает.
+        marketing_actions — список акций где товар уже участвует.
+  interpret: |
+    Фильтр: price_indexes.color_index in ["RED", "YELLOW"].
+    Сортировка: RED first, потом YELLOW, внутри по price_index_value desc.
+    Если marketing_actions непустой — товар уже в акции, можно снизить
+    цену прямо в кабинете акции вместо изменения базовой цены.
+    commissions.sales_percent_fbo — закладывай в расчёт минимальной цены.
+  when_to_use:
+    - Ежедневный мониторинг ценовой конкурентности
+    - Подготовка к промо-акциям
+    - Анализ маржинальности с учётом комиссий
+  common_mistakes:
+    - Сравнивать price без учёта marketing_seller_price (реальная цена покупателя)
+    - Игнорировать min_price — Ozon не пустит цену ниже
+    - Менять цену не учитывая активные акции
+  rate_limit_note: 1000/min, без жёстких ограничений.
+  subscription_note: На всех тарифах. price_index_value (числовой) — на Premium и выше.
+  gotchas:
+    - color_index=WITHOUT_INDEX означает что Ozon не нашёл с чем сравнить — не ошибка
+    - net_price — это себестоимость, проставленная вручную продавцом
+  review_status: verified
+
+- name: warehouse_stock_distribution
+  category: warehouse
+  title: Распределение остатков по складам
+  description: |
+    Показывает на каких именно складах FBO находятся товары и где
+    критическая ситуация. Один вызов AnalyticsStocks возвращает разбивку
+    по складам с метриками expiring_stock_count (FMCG), excess_stock_count
+    и idc_cluster (срок до OOS на конкретном складе).
+  recommended_schedule: every 4 hours
+  steps:
+    - n: 1
+      operation_id: AnalyticsAPI_AnalyticsStocks
+      purpose: Остатки по каждому товару на каждом складе FBO
+      pagination: offset/limit
+      notes: |
+        Возвращает массив items с warehouse_name, sku, available_stock_count,
+        valid_stock_count (с непросроченным сроком годности),
+        expiring_stock_count, excess_stock_count, idc_cluster.
+  interpret: |
+    group_by warehouse_name. Подсветить:
+    - expiring_stock_count > 0 → истекает срок (FMCG, лекарства)
+    - excess_stock_count > 0 → излишки, начнут списывать стоимость хранения
+    - idc_cluster < 14 → критичная ситуация на конкретном складе
+    Кросс-складская оптимизация: если на складе А излишки, а на B дефицит —
+    товар можно перебросить или сделать допоставку только на B.
+  when_to_use:
+    - Планирование пополнения по конкретным складам
+    - Реакция на сигналы Ozon о платном хранении
+    - Контроль FMCG/sunset-товаров со сроком годности
+  common_mistakes:
+    - Считать stock = sum(всех warehouses) — не вычитает резервы и просрочку
+    - Игнорировать expiring_stock_count для категорий со сроком годности
+  rate_limit_note: 60/min для PREMIUM_PLUS, 30/min для PREMIUM.
+  subscription_note: |
+    Premium-метод. Для тарифов ниже PREMIUM возвращает 403/limited data.
+    Используй ozon_get_subscription_status перед вызовом.
+  gotchas:
+    - На FBS-складах эти данные не считаются — только FBO
+    - warehouse_id может быть null для transit-стоков
+  review_status: draft
+
+# TODO(future): sync_reviews — требует включения API доступа к отзывам в кабинете
+# TODO(future): sync_unit_economics — composite workflow которая объединяет
+#   transactions + products + analytics для расчёта маржинальности

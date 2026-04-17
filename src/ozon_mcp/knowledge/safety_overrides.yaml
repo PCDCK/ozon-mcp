@@ -1,0 +1,43 @@
+# Curated safety overrides for methods where the heuristic classifier gives
+# a wrong answer. The heuristic defaults to "write" when no read-verb is
+# found in the path or operation_id — but some Ozon POST endpoints are
+# genuinely read-only despite not having "list", "info", or "get" in their name.
+#
+# Each entry maps an operation_id to the correct safety value + human reason.
+# These are loaded at catalog build time and take precedence over the classifier.
+#
+# To verify a method is truly read-only before adding it here:
+#   1. Read its description in swagger
+#   2. Confirm it matches a "Получить" / "Показать" / analytics pattern
+#   3. Ideally call it live once and verify no state changes
+#
+# DO NOT add write methods here as "read" — that defeats the safety model.
+
+# Analytics endpoints that return data but don't have "get"/"list"/"info" in path
+- operation_id: AnalyticsAPI_AnalyticsStocks
+  safety: read
+  reason: "Returns FBO stock analytics per cluster/warehouse. Description: 'Получить аналитику по остаткам'. No state changes."
+
+- operation_id: AnalyticsAPI_StocksTurnover
+  safety: read
+  reason: "Returns turnover/stock analytics. Description: 'Получить аналитику оборачиваемости'. No state changes."
+
+- operation_id: AnalyticsAPI_ManageStocks
+  safety: read
+  reason: "Despite 'Manage' in the name, description says 'Получить аналитику управления остатками'. Read-only analytics endpoint."
+
+- operation_id: AnalyticsAPI_AnalyticsGetData
+  safety: read
+  reason: "Main analytics method. Already classified as read by heuristic (op_id has 'get') — listed here as insurance."
+
+# API key info — POST but purely read-only, returns roles and expiration
+- operation_id: AccessAPI_RolesByToken
+  safety: read
+  reason: "Returns API key roles, methods list, and expiration date. Live-verified 2026-04-13: no state changes. Was misclassified as write by default-to-write heuristic."
+
+# Report generation via POST — these create async reports (quota-consuming)
+# and should stay "write" even though they look like reads.
+# Explicitly NOT overriding:
+#   - SubmitRequest (POST /api/client/statistics) — creates async report
+#   - VendorStatisticsSubmitRequest — creates async report
+#   - ReportAPI_Create* — creates async report

@@ -1,0 +1,41 @@
+{
+  "groups": [
+    {
+      "group_name": "Выполнение заказов",
+      "items": [
+        {
+          "rating": "rating_on_time",
+          "name": "Процент заказов, выполненных вовремя",
+          "current_value": 97.5,
+          "rating_direction": "HIGHER_IS_BETTER",
+          "status": "OK",
+          "value_type": "PERCENT"
+        },
+        {
+          "rating": "rating_review_avg_score",
+          "name": "Средняя оценка товаров",
+          "current_value": 4.7,
+          "rating_direction": "HIGHER_IS_BETTER",
+          "status": "OK",
+          "value_type": "RATING"
+        }
+      ]
+    },
+    {
+      "group_name": "Качество сервиса",
+      "items": [
+        {
+          "rating": "rating_price_index",
+          "name": "Индекс цен",
+          "current_value": 1.01,
+          "rating_direction": "LOWER_IS_BETTER",
+          "status": "OK",
+          "value_type": "INDEX"
+        }
+      ]
+    }
+  ],
+  "premium_scores": [
+    {"rating": "rating_on_time", "value": 97.5, "penalty_score_per_day": 0, "scope": "premium_plus"}
+  ]
+}

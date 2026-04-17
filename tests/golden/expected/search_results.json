@@ -1,0 +1,68 @@
+{
+  "товары": [
+    "ProductAPI_GetProductList",
+    "ProductAPI_ProductInfoPicturesV2",
+    "ProductAPI_GetProductInfoDescription"
+  ],
+  "остаток": [
+    "ProductAPI_ProductsStocksV2",
+    "ProductInfoWarehouseStocks",
+    "ProductAPI_GetProductInfoStocksByWarehouseFbsV2"
+  ],
+  "заказ": [
+    "FbsSplit",
+    "OrderAPI_OrderCreate",
+    "PostingAPI_ShipFbsPostingV4"
+  ],
+  "цена": [
+    "pricing_items-info",
+    "ProductAPI_GetProductInfoPrices",
+    "ProductPricesDetails"
+  ],
+  "рейтинг": [
+    "RatingAPI_RatingSummaryV1",
+    "RatingAPI_RatingHistoryV1",
+    "ProductAPI_GetProductRatingBySku"
+  ],
+  "склад": [
+    "WarehouseListV2",
+    "SupplierAPI_SupplierAvailableWarehouses",
+    "WarehouseOZONList"
+  ],
+  "оборачиваемость": [
+    "AnalyticsAPI_StocksTurnover"
+  ],
+  "акция": [
+    "Promos",
+    "SellerActionsList",
+    "SellerActionsProductsList"
+  ],
+  "product": [
+    "GetProductsV2",
+    "ProductCampaignList",
+    "CertificateProductsList"
+  ],
+  "price": [
+    "ProductAPI_GetProductInfoPrices",
+    "ProductPricesDetails",
+    "ProductAPI_ImportProductsPrices"
+  ],
+  "stock": [
+    "ProductAPI_GetProductInfoStocks",
+    "ProductInfoWarehouseStocks",
+    "AnalyticsAPI_AnalyticsStocks"
+  ],
+  "order": [
+    "SupplyOrderAPI_SupplyOrderDetails",
+    "FbpAPI_FbpOrderList",
+    "SupplyOrderGet"
+  ],
+  "turnover": [
+    "AnalyticsAPI_StocksTurnover"
+  ],
+  "warehouse": [
+    "WarehouseListV2",
+    "FbpWarehouseList",
+    "WarehouseOZONList"
+  ]
+}

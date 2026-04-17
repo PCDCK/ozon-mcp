@@ -1,0 +1,13 @@
+{
+  "refreshed_at": "2026-04-16T21:47:53Z",
+  "seller": {
+    "version": 2.1,
+    "method_count": 420,
+    "sha256": "c54962e9481ac776e14c0fe4f987e0ff74fde68a793e6b640f70db6cdaabdba5"
+  },
+  "performance": {
+    "version": "2.0",
+    "method_count": 46,
+    "sha256": "27ad70709fdcc6323c4ba9d7d9af20e21a39397023e2776a6c171ab08aa05a06"
+  }
+}

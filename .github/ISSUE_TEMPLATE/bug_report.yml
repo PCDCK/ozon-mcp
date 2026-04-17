@@ -1,0 +1,78 @@
+name: Bug report
+description: Something is not working as documented
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting! Sanitise any real `Client-Id` / `Api-Key`
+        values before pasting — replace them with `***`.
+
+  - type: input
+    id: tool
+    attributes:
+      label: MCP tool name
+      placeholder: e.g. ozon_call_method
+    validations:
+      required: true
+
+  - type: input
+    id: operation_id
+    attributes:
+      label: Ozon operation_id (if applicable)
+      placeholder: e.g. ProductAPI_GetProductList
+
+  - type: textarea
+    id: what_happened
+    attributes:
+      label: What happened
+      description: Briefly describe the unexpected behaviour.
+    validations:
+      required: true
+
+  - type: textarea
+    id: request_params
+    attributes:
+      label: Request params
+      description: The exact JSON you sent. Strip credentials.
+      render: json
+
+  - type: textarea
+    id: actual_response
+    attributes:
+      label: Actual response
+      description: The full envelope returned by the server.
+      render: json
+
+  - type: textarea
+    id: expected_response
+    attributes:
+      label: Expected response
+      description: What you expected instead.
+
+  - type: dropdown
+    id: python_version
+    attributes:
+      label: Python version
+      options:
+        - "3.12"
+        - "3.13"
+        - "other (please specify in the description)"
+    validations:
+      required: true
+
+  - type: input
+    id: ozon_mcp_version
+    attributes:
+      label: ozon-mcp version
+      description: Output of `uv pip show ozon-mcp` or the `version` line in pyproject.toml
+      placeholder: e.g. 0.6.0
+    validations:
+      required: true
+
+  - type: input
+    id: client
+    attributes:
+      label: MCP client
+      description: Which agent / IDE was talking to ozon-mcp?
+      placeholder: e.g. Claude Desktop, Cursor, Cline

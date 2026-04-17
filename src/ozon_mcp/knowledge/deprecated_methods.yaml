@@ -1,0 +1,22 @@
+# Methods that used to exist in Ozon's Swagger but have been removed.
+# We record them here so existing client code that still references these
+# operation_ids gets a clean "deprecated" signal from ozon_describe_method
+# rather than a plain "not found" error.
+
+- operation_id: SellerActionsCreateOzonCardDiscount
+  path: /v1/seller-actions/create/ozon-card-discount
+  http_method: POST
+  removed_on: "2026-04-17"
+  replacement: null
+  note: |
+    Removed in Seller API spec v2.1 snapshot pulled 2026-04-17.
+    Was: "Создать скидку по Ozon Карте". No direct replacement — Ozon Card
+    discount management moved to the seller UI; there is no public API.
+
+- operation_id: SellerActionsUpdateOzonCardDiscount
+  path: /v1/seller-actions/update/ozon-card-discount
+  http_method: POST
+  removed_on: "2026-04-17"
+  replacement: null
+  note: |
+    Removed together with SellerActionsCreateOzonCardDiscount. Same rationale.

@@ -1,0 +1,191 @@
+# Curated descriptions for hot-path methods where Ozon's swagger left
+# the description field empty (only summary present). These overrides
+# replace ``method.description`` at server startup so:
+#
+#   * BM25 search has real text to rank on
+#   * ozon_describe_method shows actionable context, not just the title
+#
+# Source: written from the operation's path + request/response schema +
+# observed live behaviour. Marked ``source: curated`` so callers can
+# tell when the description came from us vs from Ozon.
+
+- operation_id: ProductAPI_GetProductInfoDescription
+  source: curated
+  description: |
+    Возвращает текстовое описание карточки товара (полное HTML-описание),
+    отдельное от технических атрибутов. Используется для парсинга описаний
+    при content audit или экспорте в маркетинговые материалы. Принимает
+    offer_id или product_id (одно из двух). Для массового вытаскивания
+    описаний — итерируй ProductAPI_GetProductList → ProductAPI_GetProduct
+    InfoDescription по каждому id (нет батч-варианта).
+
+- operation_id: ProductAPI_ProductArchive
+  source: curated
+  description: |
+    WRITE-метод: переводит товары в архивный статус. Архивный товар
+    скрывается из выдачи Ozon, но не удаляется — данные сохраняются
+    и его можно вернуть через ProductAPI_ProductUnarchive. Используй
+    для временного скрытия sezonных или out-of-stock товаров вместо
+    удаления (DeleteProducts необратим). Принимает массив product_id
+    до 100 за раз. Требует confirm_write=True.
+
+- operation_id: ProductAPI_ProductUnarchive
+  source: curated
+  description: |
+    WRITE-метод: возвращает товары из архива в активный статус. Парный
+    к ProductAPI_ProductArchive. Используй для возврата к продаже
+    товаров временно скрытых архивацией. Принимает массив product_id.
+    Требует confirm_write=True.
+
+- operation_id: ProductAPI_ProductInfoPicturesV2
+  source: curated
+  description: |
+    Возвращает все изображения карточки товара: главное, дополнительные
+    и 360-градусные. Поля ответа: primary_photo (URL главного фото),
+    photo (массив дополнительных), photo_360 (массив 360°), color_photo
+    (по варианту цвета). Используй для аудита визуального контента
+    или импорта изображений в локальную CDN.
+
+- operation_id: ProductAPI_GetProductPlacementZoneInfo
+  source: curated
+  description: |
+    Возвращает информацию о зонах размещения товаров на складах FBO до
+    отгрузки в Ozon. Помогает понять в какие географические кластеры
+    Ozon рекомендует везти товар (на основе спроса в регионе).
+    Принимает массив SKU. Используется при планировании поставок
+    (workflow sync_orders_fbo / supply_planning).
+
+- operation_id: PostingAPI_GetFbsPostingByBarcode
+  source: curated
+  description: |
+    Read-only: получить отправление FBS по штрихкоду упаковки. Используется
+    в WMS / складских интеграциях когда сотрудник склада сканирует код
+    с коробки и нужно получить детали (sku, количество, статус).
+    В большинстве случаев удобнее идти через posting_number — этот
+    метод нужен только при работе со штрихкодами физических упаковок.
+
+- operation_id: PostingAPI_UnpaidLegalProductList
+  source: curated
+  description: |
+    Список товаров, заказанных юридическими лицами, по которым ещё не
+    прошла оплата. Используется для отслеживания дебиторской задолженности
+    B2B-сегмента. Поддерживает offset/limit пагинацию. Поле status
+    показывает причину неоплаты (например, ожидание подтверждения,
+    проверка контрагента).
+
+- operation_id: ProductAPI_GetProductInfoStocks
+  source: curated
+  description: |
+    Получить остатки FBO по списку SKU с курсорной пагинацией. Возвращает
+    items с product_id, offer_id, stocks (массив с разбивкой present /
+    reserved по типам стока). Главный метод для синхронизации остатков
+    FBO в локальную БД (workflow sync_products_catalog шаг 3 для
+    остатков). Limit ≤ 1000.
+
+- operation_id: PostingAPI_GetFboPosting
+  source: curated
+  description: |
+    Получить детали одного FBO-отправления по posting_number. Возвращает
+    products, financial_data (комиссии, выплаты), analytics_data
+    (warehouse_name, city). Используется как шаг 2 в workflow
+    sync_orders_fbo для обогащения списка posting_number из шага 1.
+    Если в filter ListFbo.with указаны financial_data + analytics_data —
+    отдельный вызов GetFboPosting не нужен.
+
+- operation_id: AnalyticsAPI_AnalyticsStocks
+  source: curated
+  description: |
+    Premium-метод: возвращает остатки FBO в разрезе складов. Поля items[]:
+    sku, warehouse_name, available_stock_count (доступно к продаже),
+    valid_stock_count (с непросроченным сроком), expiring_stock_count
+    (истекает срок), excess_stock_count (излишки), idc_cluster (дни до
+    OOS на конкретном складе). Используй когда суммарный остаток из
+    ProductInfoStocks недостаточен — нужна региональная разбивка.
+
+- operation_id: SellerAPI_SellerInfo
+  source: curated
+  description: |
+    Read-only: базовая информация о кабинете продавца. Возвращает
+    name (магазин), company (юридическое лицо), subscription
+    (type / is_premium / valid_until) и tariffication. Ключевой метод
+    для определения текущего тарифа (subscription.type — один из
+    LITE, STANDARD, PREMIUM, PREMIUM_PLUS, PREMIUM_PRO) перед вызовом
+    методов с ограничением по подписке. Не требует параметров в теле
+    запроса (пустой {}). Используется на старте любой интеграции
+    (проверка доступа, выбор стратегии запросов) и в workflow
+    cabinet_health_check.
+
+- operation_id: SellerAPI_SellerOzonLogisticsInfo
+  source: curated
+  description: |
+    Read-only: информация об участии продавца в программе Ozon Логистика
+    (FBO). Возвращает признак has_ozon_logistics и сопутствующие флаги
+    (первая миля, региональные кластеры). Используется в логистических
+    workflow'ах для решения, можно ли подавать план поставки через
+    /v1/supply-order/* или нужно идти FBS-путём.
+
+- operation_id: ProductAPI_GetProductInfoPrices
+  source: curated
+  description: |
+    Read-only: получить полную информацию о ценах и индексах для списка
+    товаров. Возвращает items[] с price (price, old_price, min_price,
+    marketing_price, marketing_seller_price, vat), price_indexes
+    (color_index: WITHOUT_INDEX/PROFIT/LOW/EXPENSIVE + числовые
+    ozon_index_data, external_index_data, self_marketplaces_index_data
+    с price_index_value), commissions (sales_percent_fbo/fbs и все сборы
+    логистики), marketing_actions и acquiring. Пагинация курсорная
+    (cursor ≤ 1000 товаров за страницу). Главный источник для анализа
+    ценовой конкурентоспособности (workflow pricing_analysis).
+
+- operation_id: ProductInfoWarehouseStocks
+  source: curated
+  description: |
+    Read-only: остатки товаров на складах FBS и rFBS с курсорной
+    пагинацией. Возвращает items[] с product_id, offer_id, stocks[]
+    (warehouse_id, present, reserved). Используется для FBS-складов —
+    для FBO-остатков ходи в ProductAPI_GetProductInfoStocks или
+    AnalyticsAPI_AnalyticsStocks. Limit ≤ 1000. Пагинация по cursor.
+
+- operation_id: ProductAPI_GetProductInfoStocksByWarehouseFbsV2
+  source: curated
+  description: |
+    Read-only: получить детальные остатки FBS-товаров в разрезе
+    конкретного склада продавца. Принимает sku[] (до 500 идентификаторов
+    за запрос). Возвращает для каждого SKU список warehouse_id с
+    количеством и резервом. Используй когда нужна разбивка FBS-остатков
+    по складам (не по товарам) — дополнение к ProductInfoWarehouseStocks.
+
+- operation_id: WarehouseAPI_DeliveryMethodListV2
+  source: curated
+  description: |
+    Read-only: список методов доставки, настроенных в кабинете продавца
+    (FBS / rFBS). Возвращает result[] с id, name, warehouse_id, status,
+    cutoff, provider_id, delivery_service. Используется для сопоставления
+    отправлений FBS со способом отгрузки и тарифом логистики.
+    Поддерживает фильтрацию по warehouse_id и пагинацию offset/limit.
+
+- operation_id: CertificateList
+  source: curated
+  description: |
+    Read-only: список сертификатов соответствия, загруженных продавцом.
+    Возвращает result.certificates[] с id, name, type_code, status_code
+    (ACTIVE / DRAFT / ARCHIVED), expire_date, verification_status.
+    Пагинация page/page_size. Используется в compliance-интеграциях
+    (обновление истекающих сертификатов, аудит комплекта документов).
+
+- operation_id: CertificateInfo
+  source: curated
+  description: |
+    Read-only: детальная информация об одном сертификате по его id.
+    Возвращает все поля CertificateList плюс accordance_type_code,
+    certificate_number, продуктную привязку. Используй для получения
+    полного содержимого перед обновлением или рассмотрением статуса.
+
+- operation_id: ProductAPI_ProductCertificationList
+  source: curated
+  description: |
+    Read-only: список категорий товаров, для которых требуется
+    обязательная сертификация. Возвращает result.certification[] с
+    category_name, type_name, is_required. Пагинация page/page_size.
+    Используется для превентивной проверки — нужно ли требовать
+    сертификат для конкретной категории перед публикацией карточки.

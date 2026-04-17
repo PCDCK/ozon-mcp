@@ -1,0 +1,83 @@
+{
+  "items": [
+    {
+      "product_id": 99000001,
+      "offer_id": "TEST-SKU-001",
+      "price": {
+        "currency_code": "RUB",
+        "price": "399.0000",
+        "old_price": "599.0000",
+        "min_price": "299.0000",
+        "marketing_price": "499.0000",
+        "marketing_seller_price": "499.0000",
+        "auto_action_enabled": "ENABLED",
+        "vat": "0.20",
+        "auto_add_to_ozon_actions_list_enabled": "UNKNOWN"
+      },
+      "price_indexes": {
+        "color_index": "WITHOUT_INDEX",
+        "external_index_data": {
+          "minimal_price": "0",
+          "minimal_price_currency": "",
+          "price_index_value": 0
+        },
+        "ozon_index_data": {
+          "minimal_price": "395.0000",
+          "minimal_price_currency": "RUB",
+          "price_index_value": 1.01
+        },
+        "self_marketplaces_index_data": {
+          "minimal_price": "0",
+          "minimal_price_currency": "",
+          "price_index_value": 0
+        }
+      },
+      "commissions": {
+        "fbs_first_mile_min_amount": 50,
+        "fbs_first_mile_max_amount": 250,
+        "fbs_deliv_to_customer_amount": 80,
+        "fbs_return_flow_amount": 50,
+        "sales_percent_fbo": 0.13,
+        "sales_percent_fbs": 0.13
+      },
+      "marketing_actions": {
+        "current_period_from": "2026-04-01T00:00:00Z",
+        "current_period_to": "2026-04-30T23:59:59Z",
+        "actions": []
+      },
+      "volume_weight": 0.5,
+      "acquiring": 0.018
+    },
+    {
+      "product_id": 99000002,
+      "offer_id": "TEST-SKU-002",
+      "price": {
+        "currency_code": "RUB",
+        "price": "1299.0000",
+        "old_price": "1799.0000",
+        "min_price": "999.0000",
+        "marketing_price": "1499.0000",
+        "marketing_seller_price": "1499.0000",
+        "auto_action_enabled": "DISABLED",
+        "vat": "0.20",
+        "auto_add_to_ozon_actions_list_enabled": "UNKNOWN"
+      },
+      "price_indexes": {
+        "color_index": "WITHOUT_INDEX",
+        "ozon_index_data": {
+          "minimal_price": "1290.0000",
+          "minimal_price_currency": "RUB",
+          "price_index_value": 1.007
+        }
+      },
+      "commissions": {
+        "sales_percent_fbo": 0.15,
+        "sales_percent_fbs": 0.15
+      },
+      "volume_weight": 1.2,
+      "acquiring": 0.018
+    }
+  ],
+  "total": 2,
+  "cursor": ""
+}
