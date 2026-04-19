@@ -4,6 +4,56 @@ All notable changes to ozon-mcp follow [keep-a-changelog](https://keepachangelog
 
 ## [Unreleased]
 
+## [0.6.1] — 2026-04-19
+
+Hotfix for a silent protocol-level crash on every execution-layer tool
+call. Plus a round of defensive hardening and logging improvements so
+the next regression is visible instead of invisible.
+
+### Fixed
+
+- **structlog writes to stderr, not stdout.** `_configure_logging()`
+  was pointing stdlib `logging` at stderr but leaving structlog on its
+  default `PrintLogger(file=sys.stdout)`. Every `log.info("ozon_request",
+  ...)` in `transport/base.py` emitted a JSON line onto the stdio
+  channel that MCP uses for JSON-RPC framing, so the client disconnected
+  with `Connection closed` on the first real API call. Static tools
+  (no logging) kept working, which masked the bug. Now configured with
+  `PrintLoggerFactory(file=sys.stderr)`.
+- **UTF-8 stderr on Windows.** `sys.stderr.reconfigure(encoding="utf-8")`
+  runs at startup so Cyrillic log fields and tracebacks don't crash the
+  cp1252 codec. `JSONRenderer(ensure_ascii=False)` makes those logs
+  readable rather than `\uXXXX`-escaped.
+
+### Added
+
+- **`@safe_tool` decorator** (`tools/_safety.py`) wraps every MCP
+  tool handler in a `BaseException` guard. Unhandled exceptions become
+  a structured `error_type="internal"` envelope plus a full traceback
+  on ERROR — the process stays alive and the caller gets a
+  typed response. Applied to `ozon_call_method`, `ozon_fetch_all`,
+  `ozon_get_subscription_status`, `ozon_list_methods_for_subscription`.
+- **Transport catch-all.** `BaseClient.request()` now converts any
+  non-`httpx.HTTPError` exception (SSLError, ProxyError, mid-request
+  cancel, ...) into an `OzonError` with `unexpected transport error:`
+  prefix. `_auth_headers()` and `_rate_limits.for_call()` were moved
+  inside the try-block — previously a broken OAuth refresh or rate
+  config could raise before the guard kicked in.
+- **Request/response DEBUG logs** in `transport/base.py` — request
+  body and response body truncated to 1 KB, `duration_ms` on every
+  response, structured event names (`ozon_request`, `ozon_request_body`,
+  `ozon_response`, `ozon_response_body`).
+- **Optional rotating file log.** Setting `OZON_LOG_FILE=/path/to/log`
+  adds a `RotatingFileHandler` (5 MB × 3 backups) parallel to stderr.
+  Useful because MCP client stderr is often not surfaced to the user.
+- **Asyncio task exception handler** — unawaited task crashes are now
+  logged via structlog (`asyncio_task_crashed`) instead of printing to
+  stderr with no context.
+- **`ozon-mcp --diagnose`** CLI flag. Runs a single `/v1/seller/info`
+  call against the Ozon API and either prints `OK subscription=...` or
+  a full traceback. Skips the MCP stdio loop entirely — the supported
+  way to verify credentials without a client.
+
 ## [0.6.0] — 2026-04-17
 
 Six-phase release focused on production-grade reliability and on

@@ -2,10 +2,15 @@
 
 from __future__ import annotations
 
+import asyncio
+import contextlib
 import logging
+import os
 import sys
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from logging.handlers import RotatingFileHandler
+from typing import Any
 
 import structlog
 from mcp.server.fastmcp import FastMCP
@@ -107,6 +112,7 @@ def create_server(config: Config | None = None) -> FastMCP:
 
     @asynccontextmanager
     async def lifespan(_server: FastMCP) -> AsyncIterator[None]:
+        _install_asyncio_exception_handler()
         try:
             yield
         finally:
@@ -174,14 +180,76 @@ def _maybe_build_clients(
 
 
 def _configure_logging(level: str) -> None:
+    """Route every log byte to stderr — stdout belongs to the MCP stdio frame.
+
+    structlog's default logger factory writes to stdout; without redirecting it
+    here, a single `log.info(...)` during a tool call corrupts the JSON-RPC
+    stream and the MCP client hangs up with ``Connection closed``.
+
+    Also reconfigures stderr to UTF-8 on Windows so non-ASCII log fields
+    (Cyrillic from Ozon payloads, tracebacks of errors whose message contains
+    non-latin chars) don't raise ``UnicodeEncodeError`` from the cp1252 codec.
+    """
     log_level = getattr(logging, level.upper(), logging.INFO)
-    # MCP stdio protocol owns stdout — all logs MUST go to stderr.
-    logging.basicConfig(format="%(message)s", level=log_level, stream=sys.stderr, force=True)
+
+    # Force UTF-8 on stderr wherever supported (Python 3.7+). On Windows the
+    # default console codec is cp1252 and JSONRenderer(ensure_ascii=False)
+    # would crash when a log event contains non-ASCII characters.
+    if hasattr(sys.stderr, "reconfigure"):
+        # Some environments (pytest capture, redirected files) don't allow
+        # reconfigure — falling through is harmless.
+        with contextlib.suppress(Exception):
+            sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+
+    # Stdlib logging — httpx / httpcore / anyio emit through it.
+    root_handlers: list[logging.Handler] = [logging.StreamHandler(stream=sys.stderr)]
+    log_file = os.environ.get("OZON_LOG_FILE")
+    if log_file:
+        root_handlers.append(
+            RotatingFileHandler(log_file, maxBytes=5_000_000, backupCount=3, encoding="utf-8")
+        )
+    logging.basicConfig(
+        format="%(message)s",
+        level=log_level,
+        handlers=root_handlers,
+        force=True,
+    )
+
+    # structlog — JSON events. The key fix: PrintLoggerFactory(file=sys.stderr)
+    # instead of the default stdout. ensure_ascii=False keeps Cyrillic readable
+    # in logs (stderr is UTF-8 after the reconfigure above).
     structlog.configure(
         processors=[
             structlog.processors.add_log_level,
             structlog.processors.TimeStamper(fmt="iso"),
-            structlog.processors.JSONRenderer(),
+            structlog.processors.JSONRenderer(ensure_ascii=False),
         ],
         wrapper_class=structlog.make_filtering_bound_logger(log_level),
+        logger_factory=structlog.PrintLoggerFactory(file=sys.stderr),
+        cache_logger_on_first_use=True,
     )
+
+
+def _install_asyncio_exception_handler() -> None:
+    """Surface unawaited-task exceptions in the log instead of ``sys.stderr``.
+
+    Without this, asyncio default handler prints to stderr with no context
+    (``Task exception was never retrieved``). We route it through structlog so
+    the event has the same shape as the rest of our logs — and so a future
+    file-log handler catches it too.
+    """
+    try:
+        loop = asyncio.get_event_loop()
+    except RuntimeError:
+        return
+
+    def _handler(_loop: asyncio.AbstractEventLoop, context: dict[str, Any]) -> None:
+        exc = context.get("exception")
+        log.error(
+            "asyncio_task_crashed",
+            message=context.get("message"),
+            exception_class=type(exc).__name__ if exc else None,
+            exception=str(exc) if exc else None,
+        )
+
+    loop.set_exception_handler(_handler)

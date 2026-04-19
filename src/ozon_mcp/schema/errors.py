@@ -26,6 +26,10 @@ ErrorType = Literal[
     "write_requires_confirmation",
     "destructive_requires_double_confirmation",
     "validation",
+    # Catch-all for the defensive ``@safe_tool`` envelope — raised when an
+    # otherwise-unhandled exception reaches the tool boundary. New clients
+    # should inspect ``payload.exception_class`` to decide what to do.
+    "internal",
     "unknown",
 ]
 
