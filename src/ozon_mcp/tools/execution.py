@@ -41,6 +41,7 @@ from ozon_mcp.errors import (
 from ozon_mcp.knowledge import KnowledgeBase, PaginationPattern
 from ozon_mcp.schema import Catalog
 from ozon_mcp.schema.errors import OzonError as OzonErrorModel
+from ozon_mcp.tools._safety import safe_tool
 from ozon_mcp.transport.performance import PerformanceClient
 from ozon_mcp.transport.seller import SellerClient
 
@@ -327,6 +328,7 @@ def register(
     knowledge: KnowledgeBase | None = None,
 ) -> None:
     @mcp.tool()
+    @safe_tool
     async def ozon_call_method(
         operation_id: str,
         params: dict[str, Any] | None = None,
@@ -376,6 +378,7 @@ def register(
         )
 
     @mcp.tool()
+    @safe_tool
     async def ozon_fetch_all(
         operation_id: str,
         params: dict[str, Any] | None = None,

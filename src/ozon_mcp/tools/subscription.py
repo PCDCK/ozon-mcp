@@ -23,6 +23,7 @@ from ozon_mcp.errors import OzonError
 from ozon_mcp.schema import Catalog
 from ozon_mcp.schema.errors import OzonError as OzonErrorModel
 from ozon_mcp.schema.extractor import SUBSCRIPTION_TIERS
+from ozon_mcp.tools._safety import safe_tool
 from ozon_mcp.transport.seller import SellerClient
 
 _SELLER_INFO_PATH = "/v1/seller/info"
@@ -45,6 +46,7 @@ def register(
     seller_client: SellerClient | None,
 ) -> None:
     @mcp.tool()
+    @safe_tool
     def ozon_list_methods_for_subscription(tier: str) -> dict[str, Any]:
         """List all Ozon methods that mention a specific subscription tier.
 
@@ -95,6 +97,7 @@ def register(
     cache: dict[str, Any] = {}
 
     @mcp.tool()
+    @safe_tool
     async def ozon_get_subscription_status(refresh: bool = False) -> dict[str, Any]:
         """Get the current account's subscription tier from /v1/seller/info.
 
