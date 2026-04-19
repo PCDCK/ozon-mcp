@@ -9,6 +9,7 @@ Security/correctness notes:
 
 from __future__ import annotations
 
+import time
 from datetime import UTC
 from typing import Any
 
@@ -34,6 +35,11 @@ from ozon_mcp.errors import (
 from ozon_mcp.transport.ratelimit import RateLimitRegistry
 
 log = structlog.get_logger()
+
+# Truncate request/response bodies in DEBUG logs so we never dump a 2 MB
+# product list — enough signal to debug an integration, not enough to
+# bury the log stream.
+_LOG_BODY_LIMIT = 1024
 
 
 class BaseClient:
@@ -89,10 +95,25 @@ class BaseClient:
         owns retry semantics itself (Retry-After header + structured
         rate_limit_exceeded responses).
         """
-        headers = await self._auth_headers()
-        limiter = self._rate_limits.for_call(self.api_label, operation_id, section)
-
         async def _do() -> dict[str, Any]:
+            # Both _auth_headers() and _rate_limits.for_call() used to run
+            # OUTSIDE this try block — if either raised (e.g. OAuth refresh
+            # failure, broken rate-limit config) the exception escaped the
+            # typed error envelope and, pre-v0.6.1, killed the MCP process.
+            # Keep them inside the timed/guarded scope.
+            try:
+                headers = await self._auth_headers()
+                limiter = self._rate_limits.for_call(
+                    self.api_label, operation_id, section
+                )
+            except OzonError:
+                raise
+            except Exception as e:
+                raise OzonError(
+                    f"request setup failed: {e}",
+                    operation_id=operation_id,
+                ) from e
+
             async with limiter:
                 log.info(
                     "ozon_request",
@@ -101,6 +122,12 @@ class BaseClient:
                     path=path,
                     operation_id=operation_id,
                 )
+                log.debug(
+                    "ozon_request_body",
+                    operation_id=operation_id,
+                    body=_truncate(json_body),
+                )
+                start = time.monotonic()
                 try:
                     response = await self._client.request(
                         method, path, json=json_body, headers=headers
@@ -119,12 +146,34 @@ class BaseClient:
                         operation_id=operation_id,
                     ) from e
                 except httpx.HTTPError as e:
-                    # Catch-all for other httpx-level errors so the agent
-                    # always gets a typed exception, never a raw httpx one.
+                    # Catch-all for other httpx-level errors (SSLError,
+                    # ProxyError, LocalProtocolError, ...) so the agent always
+                    # gets a typed exception, never a raw httpx one.
                     raise OzonError(
                         f"transport error: {e}",
                         operation_id=operation_id,
                     ) from e
+                except Exception as e:
+                    # Final safety net: anything httpx might surface that is
+                    # NOT an HTTPError subclass (asyncio cancel mid-request
+                    # wrapped, third-party middleware bugs, etc.).
+                    raise OzonError(
+                        f"unexpected transport error: {type(e).__name__}: {e}",
+                        operation_id=operation_id,
+                    ) from e
+                duration_ms = int((time.monotonic() - start) * 1000)
+                log.info(
+                    "ozon_response",
+                    api=self.api_label,
+                    operation_id=operation_id,
+                    status_code=response.status_code,
+                    duration_ms=duration_ms,
+                )
+                log.debug(
+                    "ozon_response_body",
+                    operation_id=operation_id,
+                    body=_truncate(response.text),
+                )
                 self._raise_for_status(response, operation_id)
                 if not response.content:
                     return {}
@@ -260,3 +309,20 @@ def _extract_error_message(parsed: Any) -> str | None:
             if isinstance(d_msg, str) and d_msg:
                 return d_msg
     return None
+
+
+def _truncate(value: Any) -> str:
+    """Render a request/response body preview that is safe to log.
+
+    Non-string payloads (dict / list / None) are coerced via ``str`` which,
+    unlike ``json.dumps``, never raises on Pydantic models or SecretStr
+    wrappers. The caller is only ever going to read this for debugging,
+    so we optimise for not-crashing rather than for deserialisable round
+    trip.
+    """
+    if value is None:
+        return ""
+    text: str = value if isinstance(value, str) else str(value)
+    if len(text) > _LOG_BODY_LIMIT:
+        return text[:_LOG_BODY_LIMIT] + f"...[+{len(text) - _LOG_BODY_LIMIT} chars]"
+    return text
